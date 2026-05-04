@@ -1,133 +1,121 @@
 # AI Architecture — 8 GB RAM / 4 GB VRAM
 
-Architettura completa per far girare un agente AI locale su hardware modesto (Intel i5, 8 GB RAM, GPU entry-level), senza API cloud, senza costi, senza LiteLLM.
+Stack AI locale completo su hardware modesto. Si avvia con un solo comando: `claude`.
+
+## Come funziona
+
+```
+terminale
+   │
+   ▼
+ claude  ◄── comando unico, avvia tutto in automatico
+   │
+   ├── proxy (background)        Anthropic API → Ollama
+   ├── screen-watcher (background) screenshot ogni 90s → memoria
+   └── cc-haha (foreground)      interfaccia TUI
+           │
+           ├── HAIKU  task veloci   ──► qwen2.5-coder:1.5b  (~1 GB)
+           ├── SONNET main agent   ──► phi4-mini             (~2.5 GB)
+           ├── OPUS   task complessi ► phi4-mini             (~2.5 GB)
+           │
+           └── MCP tools
+               ├── fetch       → internet (legge qualsiasi URL)
+               └── vision      → see_screen / read_screen_memory
+                       │
+                       └── moondream  (~1.7 GB, on-demand)
+```
+
+**cc-haha sceglie il modello automaticamente** in base alla complessità del task.  
+**moondream** viene caricato solo quando chiedi di guardare lo schermo — non occupa RAM il resto del tempo.
 
 ## Stack
 
 | Componente | Ruolo | RAM |
 |---|---|---|
-| **phi4-mini** (Ollama) | LLM principale — coding, ragionamento, tool use | ~2.5 GB |
-| **moondream** (Ollama) | Visione — descrive lo schermo per la memoria | ~1.7 GB |
-| **proxy.ts** (Bun) | Traduce Anthropic API → OpenAI per Ollama | ~30 MB |
-| **screen-watcher.ts** (Bun) | Screenshot ogni 90s → descrizione → memoria | ~30 MB |
-| **cc-haha** | Claude Code fork — TUI completa, MCP, multi-agent | ~150 MB |
-| **MCP fetch** | Accesso internet (legge qualsiasi URL) | zero |
+| **phi4-mini** | Main agent — coding, ragionamento, tool use | ~2.5 GB |
+| **qwen2.5-coder:1.5b** | Task veloci — summary, domande semplici | ~1.0 GB |
+| **moondream** | Visione — vede il desktop su richiesta | ~1.7 GB |
+| **proxy.ts** | Bridge Anthropic→Ollama, routing modelli | ~30 MB |
+| **screen-watcher.ts** | Osservazione passiva schermo → memoria | ~30 MB |
+| **vision-mcp.ts** | MCP server per visione attiva | ~20 MB |
+| **cc-haha** | Interfaccia TUI + MCP + multi-agent | ~150 MB |
 
-**Totale worst-case: ~4.5 GB** — I due modelli Ollama non girano mai insieme grazie a `OLLAMA_MAX_LOADED_MODELS=1`.
+**I tre modelli Ollama non girano mai insieme** (`OLLAMA_MAX_LOADED_MODELS=1`).  
+Worst case con uno solo caricato: ~3 GB modello + ~2.5 GB OS = ~5.5 GB su 8 GB.
 
-## Architettura RAM
+## Setup (una volta sola)
 
-```
-┌─────────────────────────────────────────────────┐
-│                   8 GB RAM                       │
-│                                                  │
-│  OS + app      ████████   ~2.5 GB               │
-│  phi4-mini     ██████████  ~2.5 GB  (o unload)  │
-│  moondream     ███████     ~1.7 GB  (o unload)  │
-│  proxy+watcher ▌           ~0.1 GB              │
-│                                                  │
-│  Ollama swappa automaticamente i modelli:        │
-│  mai entrambi caricati allo stesso tempo         │
-└─────────────────────────────────────────────────┘
-```
+### Prerequisiti
+- [Ollama](https://ollama.ai)
+- [Bun](https://bun.sh)
+- [Git for Windows](https://git-scm.com/download/win)
+- [cc-haha](https://github.com/NanmiCoder/cc-haha) installato
 
-## Prerequisiti
-
-- [Ollama](https://ollama.ai) installato
-- [Bun](https://bun.sh) installato
-- [cc-haha](https://github.com/NanmiCoder/cc-haha) clonato e configurato
-- Git for Windows (per eseguire cc-haha su Windows)
-
-## Installazione
-
-### 1. Clona questo repo
+### Installazione
 
 ```powershell
-git clone https://github.com/TUO-USERNAME/ai-arch-8gb
+# 1. Clona questo repo accanto a cc-haha
+git clone https://github.com/H8dboy/ai-arch-8gb
 cd ai-arch-8gb
+
+# 2. Setup (aggiunge `claude` al PATH, scarica i modelli, configura Ollama)
+.\setup.ps1
+
+# 3. Configura cc-haha
+copy .env.example ..\cc-haha-main\.env
+# modifica .env se cc-haha è in un percorso diverso
+
+# 4. Apri un nuovo terminale e digita:
+claude
 ```
 
-### 2. Scarica i modelli
-
+Se cc-haha è in un percorso diverso:
 ```powershell
-ollama pull phi4-mini    # ~2.5 GB
-ollama pull moondream    # ~1.7 GB
+$env:CCHAHA_DIR = "C:\percorso\cc-haha-main"
+claude
 ```
 
-### 3. Configura cc-haha
-
-```powershell
-# Clona cc-haha nella directory parent
-git clone https://github.com/NanmiCoder/cc-haha ../cc-haha-main
-cd ..\cc-haha-main
-bun install
-
-# Copia la configurazione
-Copy-Item ..\ai-arch-8gb\.env.example .env
-Copy-Item ..\ai-arch-8gb\.mcp.json .mcp.json
-```
-
-### 4. Avvia tutto
-
-```powershell
-.\start.ps1
-# oppure se cc-haha è in un percorso diverso:
-.\start.ps1 -CcHahaPath "C:\percorso\cc-haha-main"
-```
-
-## Come funziona
-
-### Proxy (`proxy.ts`)
-Converte le richieste Anthropic Messages API (formato usato da cc-haha) in OpenAI Chat Completions (formato Ollama). Zero dipendenze Python, gira su Bun in ~30 MB di RAM.
-
-- `num_ctx: 4096` — finestra di contesto ridotta, dimezza il KV-cache RAM rispetto al default
-- Supporto completo: streaming, tool use, system prompt, messaggi multipli
-
-### Screen watcher (`screen-watcher.ts`)
-- Screenshot ogni 90 secondi via PowerShell (.NET System.Drawing)
-- **Controlla se Ollama è occupato** prima di caricare moondream — se il LLM principale sta generando, aspetta 30s e riprova
-- Hash dell'immagine per rilevare schermate identiche (non loggare "desktop vuoto" 100 volte)
-- Salva osservazioni in `~\.claude\screen-memory\observations.md`
-- Tronca automaticamente sopra 400 KB
-
-### Ottimizzazioni Ollama (`start.ps1`)
-```
-OLLAMA_MAX_LOADED_MODELS=1   → un solo modello in RAM
-OLLAMA_NUM_PARALLEL=1        → una richiesta alla volta
-OLLAMA_KEEP_ALIVE=2m         → scarica dopo 2 min di inattività
-```
-
-### Internet (MCP fetch)
-`.mcp.json` aggiunge il server MCP `fetch` a cc-haha. L'agente può leggere qualsiasi URL senza processi extra.
-
-## Cosa puoi chiedere all'agente
+## Cosa puoi fare
 
 ```
-# Ricerca web
-"cerca le ultime novità su Rust 2025"
+# Guarda lo schermo
+"guarda lo schermo e dimmi cosa c'è"
+"ho un errore, puoi vedere?"
 
-# Coding
-"scrivi una funzione Python per parsare CSV con gestione errori"
-
-# Contesto schermo (usa la memoria accumulata)
+# Contesto di lavoro
 "cosa stavo facendo prima?"
+"riassumi le ultime ore di lavoro"
 
-# Tutto insieme
-"guarda cosa ho sullo schermo e cerca documentazione relativa"
+# Coding (phi4-mini)
+"scrivi una funzione che legge un CSV"
+"trova il bug in questo codice"
+
+# Ricerca web (fetch MCP)
+"cerca la documentazione di Bun.serve"
+"trova le ultime novità su phi-4"
+
+# Task semplici (qwen, più veloce)
+"traduci questa frase"
+"spiega brevemente cos'è un mutex"
 ```
 
-## Limiti onesti
+## File
 
-- **phi4-mini (3.8B)** è buono ma non paragonabile a GPT-4 o Claude 3.5 — tool calling complesso può avere errori
-- **moondream** descrive lo schermo in inglese con qualità media — sufficiente per il contesto
-- **L'apprendimento è basato su memoria testuale**, non su fine-tuning del modello
-- Con Chrome + altro aperto, la RAM può avvicinarsi al limite — chiudi le app inutili
+| File | Descrizione |
+|---|---|
+| `claude.cmd` | Comando principale — avvia tutto |
+| `proxy.ts` | Bridge Anthropic→Ollama con routing modelli |
+| `screen-watcher.ts` | Osservatore passivo schermo |
+| `vision-mcp.ts` | MCP server visione (see_screen, read_screen_memory) |
+| `setup.ps1` | Setup una-tantum |
+| `.env.example` | Configurazione cc-haha |
+| `.mcp.json` | Template MCP (rigenerato da claude.cmd) |
 
 ## Hardware testato
 
 ```
-CPU:   Intel Core i5-8265U @ 1.60GHz (4 core / 8 thread)
-RAM:   8 GB DDR4
-GPU:   AMD Radeon Pro WX3200 (4 GB VRAM) — Ollama gira su CPU
-OS:    Windows 11 Pro
+CPU:  Intel Core i5-8265U @ 1.60GHz (4C/8T)
+RAM:  8 GB DDR4
+GPU:  AMD Radeon Pro WX3200 4GB — Ollama su CPU
+OS:   Windows 11 Pro
 ```

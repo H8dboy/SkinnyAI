@@ -3,6 +3,10 @@
     "fetch": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-fetch"]
+    },
+    "vision": {
+      "command": "bun",
+      "args": ["ARCH_DIR/vision-mcp.ts"]
     }
   }
 }
