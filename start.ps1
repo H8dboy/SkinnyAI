@@ -33,11 +33,19 @@ try {
     exit 1
 }
 
-# ── 3. Pull phi4-mini se non presente ─────────────────────────────────────────
+# ── 3. Pull modelli se non presenti ───────────────────────────────────────────
 $models = (Invoke-RestMethod -Uri "http://localhost:11434/api/tags").models.name
 if (-not ($models -like "*phi4-mini*")) {
     Write-Host "[start] Download phi4-mini (~2.5 GB, prima volta)..." -ForegroundColor Yellow
     & ollama pull phi4-mini
+}
+if (-not ($models -like "*qwen2.5-coder*")) {
+    Write-Host "[start] Download qwen2.5-coder:1.5b (~1 GB, prima volta)..." -ForegroundColor Yellow
+    & ollama pull qwen2.5-coder:1.5b
+}
+if (-not ($models -like "*moondream*")) {
+    Write-Host "[start] Download moondream (~1.7 GB, prima volta)..." -ForegroundColor Yellow
+    & ollama pull moondream
 }
 
 # ── 4. Proxy (background) ─────────────────────────────────────────────────────
@@ -66,7 +74,8 @@ if (-not (Test-Path $CcHahaPath)) {
 
 Write-Host ""
 Write-Host "======================================================" -ForegroundColor DarkGray
-Write-Host "  AI pronta  |  phi4-mini + moondream + fetch MCP" -ForegroundColor White
+Write-Host "  AI pronta  |  phi4-mini / qwen + moondream + fetch MCP" -ForegroundColor White
+Write-Host "  Cambia modello: modifica ANTHROPIC_MODEL in .env" -ForegroundColor DarkGray
 Write-Host "======================================================" -ForegroundColor DarkGray
 Write-Host ""
 

@@ -5,9 +5,13 @@
  */
 
 const OLLAMA_BASE = "http://localhost:11434/v1";
-const MODEL       = "phi4-mini";   // modello principale
 const PORT        = 4000;
 const NUM_CTX     = 4096;          // finestra di contesto ridotta → meno RAM KV-cache
+
+// Modello selezionabile via env: OLLAMA_MODEL=qwen2.5-coder:1.5b bun proxy.ts
+// phi4-mini  → qualità migliore, tool calling affidabile (~2.5 GB RAM)
+// qwen2.5-coder:1.5b → più veloce, meno RAM (~1 GB), buono per task semplici
+const MODEL = process.env.OLLAMA_MODEL ?? "phi4-mini";
 
 // ── Tipi ─────────────────────────────────────────────────────────────────────
 
