@@ -1,7 +1,7 @@
 /**
- * Screen watcher — osserva lo schermo ogni 90s con moondream.
- * Salta il ciclo se Ollama sta già servendo una richiesta (evita swap di modelli).
- * Le osservazioni vengono salvate in %USERPROFILE%\.claude\screen-memory\observations.md
+ * Screen watcher — captures the screen every 90s using moondream.
+ * Skips the cycle if Ollama is busy to avoid model swapping under load.
+ * Observations are saved to %USERPROFILE%\.claude\screen-memory\observations.md
  * Run: bun screen-watcher.ts
  */
 
@@ -10,24 +10,24 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { join } from "path";
 import { createHash } from "crypto";
 
-const OLLAMA_BASE    = "http://localhost:11434";
-const VISION_MODEL   = "moondream";
-const INTERVAL_MS    = 90_000;   // 90 secondi — più rispettoso delle risorse
-const BUSY_COOLDOWN  = 30_000;   // se Ollama è occupato, riprova dopo 30s
+const OLLAMA_BASE   = "http://localhost:11434";
+const VISION_MODEL  = "moondream";
+const INTERVAL_MS   = 90_000;   // 90 seconds
+const BUSY_COOLDOWN = 30_000;   // retry after 30s if Ollama is busy
 
-const HOME       = process.env.USERPROFILE ?? process.env.HOME ?? "C:\\Users\\produ";
-const MEMORY_DIR = join(HOME, ".claude", "screen-memory");
-const MEMORY_FILE= join(MEMORY_DIR, "observations.md");
-const SHOT_TMP   = join(process.env.TEMP ?? "C:\\Temp", "ai-arch-screen.png");
-const PS1_PATH   = join(process.env.TEMP ?? "C:\\Temp", "ai-arch-screenshot.ps1");
+const HOME        = process.env.USERPROFILE ?? process.env.HOME ?? "";
+const MEMORY_DIR  = join(HOME, ".claude", "screen-memory");
+const MEMORY_FILE = join(MEMORY_DIR, "observations.md");
+const SHOT_TMP    = join(process.env.TEMP ?? "C:\\Temp", "ai-arch-screen.png");
+const PS1_PATH    = join(process.env.TEMP ?? "C:\\Temp", "ai-arch-screenshot.ps1");
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
 
 if (!existsSync(MEMORY_DIR)) mkdirSync(MEMORY_DIR, { recursive: true });
 if (!existsSync(MEMORY_FILE))
-  writeFileSync(MEMORY_FILE, "# Osservazioni schermo\n\nAggiornato automaticamente dallo screen watcher.\n\n");
+  writeFileSync(MEMORY_FILE, "# Screen observations\n\nUpdated automatically by screen-watcher.\n\n");
 
-// Script PowerShell per screenshot — scritto una volta
+// Write PowerShell screenshot script once at startup
 writeFileSync(PS1_PATH, [
   "Add-Type -AssemblyName System.Windows.Forms",
   "Add-Type -AssemblyName System.Drawing",
@@ -43,13 +43,12 @@ writeFileSync(PS1_PATH, [
 
 // ── Ollama helpers ─────────────────────────────────────────────────────────────
 
-/** true se un modello sta attualmente girando (generazione in corso) */
+/** Returns true if a non-vision model is currently loaded (main LLM in use) */
 async function isOllamaBusy(): Promise<boolean> {
   try {
     const res = await fetch(`${OLLAMA_BASE}/api/ps`, { signal: AbortSignal.timeout(3_000) });
     if (!res.ok) return false;
     const data = await res.json() as { models?: { name: string; size_vram: number }[] };
-    // Se c'è un modello caricato che non è moondream, Ollama sta servendo il LLM principale
     return (data.models ?? []).some(m => !m.name.startsWith(VISION_MODEL) && m.size_vram > 0);
   } catch {
     return false;
@@ -60,13 +59,13 @@ async function ensureModel() {
   const res  = await fetch(`${OLLAMA_BASE}/api/tags`);
   const data = await res.json() as { models: { name: string }[] };
   if (data.models.some(m => m.name.startsWith(VISION_MODEL))) return;
-  console.log(`[watcher] Download ${VISION_MODEL} (~1.7 GB)...`);
+  console.log(`[watcher] Downloading ${VISION_MODEL} (~1.7 GB)...`);
   await fetch(`${OLLAMA_BASE}/api/pull`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: VISION_MODEL, stream: false }),
   });
-  console.log(`[watcher] ${VISION_MODEL} pronto.`);
+  console.log(`[watcher] ${VISION_MODEL} ready.`);
 }
 
 async function describeScreen(b64: string): Promise<string> {
@@ -107,10 +106,10 @@ function isDuplicate(hash: string): boolean {
   return false;
 }
 
-// ── Memoria ───────────────────────────────────────────────────────────────────
+// ── Memory ────────────────────────────────────────────────────────────────────
 
 function saveObservation(desc: string) {
-  const ts = new Date().toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const ts = new Date().toLocaleString("en-GB", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   appendFileSync(MEMORY_FILE, `**[${ts}]** ${desc}\n\n`);
 }
 
@@ -120,7 +119,7 @@ function trimMemory() {
     if (c.length < 400_000) return;
     const lines = c.split("\n");
     writeFileSync(MEMORY_FILE,
-      lines.slice(0, 4).join("\n") + "\n\n*(voci precedenti rimosse)*\n\n" +
+      lines.slice(0, 4).join("\n") + "\n\n*(older entries removed)*\n\n" +
       lines.slice(Math.floor(lines.length / 2)).join("\n")
     );
   } catch {}
@@ -129,9 +128,9 @@ function trimMemory() {
 // ── Main loop ─────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log("[watcher] Avviato");
-  console.log(`[watcher] Memoria → ${MEMORY_FILE}`);
-  console.log(`[watcher] Intervallo: ${INTERVAL_MS / 1000}s | Modello: ${VISION_MODEL}\n`);
+  console.log("[watcher] Started");
+  console.log(`[watcher] Memory → ${MEMORY_FILE}`);
+  console.log(`[watcher] Interval: ${INTERVAL_MS / 1000}s | Model: ${VISION_MODEL}\n`);
 
   await ensureModel();
 
@@ -139,7 +138,6 @@ async function main() {
 
   while (true) {
     try {
-      // Aspetta se Ollama sta già lavorando — evita swap di modelli sotto carico
       if (await isOllamaBusy()) {
         process.stdout.write("[busy] ");
         await Bun.sleep(BUSY_COOLDOWN);
@@ -156,7 +154,7 @@ async function main() {
       }
       lastHash = hash;
 
-      process.stdout.write(`\n[${new Date().toLocaleTimeString("it-IT")}] analisi... `);
+      process.stdout.write(`\n[${new Date().toLocaleTimeString("en-GB")}] analyzing... `);
       const desc = await describeScreen(b64);
 
       if (desc.length > 5) {
@@ -164,10 +162,10 @@ async function main() {
         saveObservation(desc);
         trimMemory();
       } else {
-        process.stdout.write("(vuoto)\n");
+        process.stdout.write("(empty response)\n");
       }
     } catch (err: unknown) {
-      console.error(`\n[errore] ${err instanceof Error ? err.message : err}`);
+      console.error(`\n[error] ${err instanceof Error ? err.message : err}`);
     }
 
     await Bun.sleep(INTERVAL_MS);

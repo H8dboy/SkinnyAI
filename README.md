@@ -1,121 +1,128 @@
 # AI Architecture — 8 GB RAM / 4 GB VRAM
 
-Stack AI locale completo su hardware modesto. Si avvia con un solo comando: `claude`.
+A complete local AI stack for modest hardware (Intel i5, 8 GB RAM, entry-level GPU). No cloud APIs, no costs. Starts with a single command: `skinny`.
 
-## Come funziona
+## How it works
 
 ```
-terminale
+terminal
    │
    ▼
- claude  ◄── comando unico, avvia tutto in automatico
+ skinny  ◄── single command, starts everything automatically
    │
-   ├── proxy (background)        Anthropic API → Ollama
-   ├── screen-watcher (background) screenshot ogni 90s → memoria
-   └── cc-haha (foreground)      interfaccia TUI
+   ├── proxy (background)         Anthropic API → Ollama router
+   ├── screen-watcher (background) screenshot every 90s → memory
+   └── cc-haha (foreground)       TUI interface
            │
-           ├── HAIKU  task veloci   ──► qwen2.5-coder:1.5b  (~1 GB)
+           ├── HAIKU  fast tasks    ──► qwen2.5-coder:1.5b  (~1 GB)
            ├── SONNET main agent   ──► phi4-mini             (~2.5 GB)
-           ├── OPUS   task complessi ► phi4-mini             (~2.5 GB)
+           ├── OPUS   complex tasks ──► phi4-mini            (~2.5 GB)
            │
            └── MCP tools
-               ├── fetch       → internet (legge qualsiasi URL)
-               └── vision      → see_screen / read_screen_memory
+               ├── fetch   → internet (reads any URL)
+               └── vision  → see_screen / read_screen_memory
                        │
-                       └── moondream  (~1.7 GB, on-demand)
+                       └── moondream  (~1.7 GB, on-demand only)
 ```
 
-**cc-haha sceglie il modello automaticamente** in base alla complessità del task.  
-**moondream** viene caricato solo quando chiedi di guardare lo schermo — non occupa RAM il resto del tempo.
+**cc-haha selects the model automatically** based on task complexity.  
+**moondream** is loaded only when you ask to look at the screen — no RAM usage otherwise.
 
 ## Stack
 
-| Componente | Ruolo | RAM |
+| Component | Role | RAM |
 |---|---|---|
-| **phi4-mini** | Main agent — coding, ragionamento, tool use | ~2.5 GB |
-| **qwen2.5-coder:1.5b** | Task veloci — summary, domande semplici | ~1.0 GB |
-| **moondream** | Visione — vede il desktop su richiesta | ~1.7 GB |
-| **proxy.ts** | Bridge Anthropic→Ollama, routing modelli | ~30 MB |
-| **screen-watcher.ts** | Osservazione passiva schermo → memoria | ~30 MB |
-| **vision-mcp.ts** | MCP server per visione attiva | ~20 MB |
-| **cc-haha** | Interfaccia TUI + MCP + multi-agent | ~150 MB |
+| **phi4-mini** | Main agent — coding, reasoning, tool use | ~2.5 GB |
+| **qwen2.5-coder:1.5b** | Fast tasks — summaries, simple questions | ~1.0 GB |
+| **moondream** | Vision — sees the desktop on demand | ~1.7 GB |
+| **proxy.ts** | Anthropic→Ollama bridge with model routing | ~30 MB |
+| **screen-watcher.ts** | Passive screen observation → memory file | ~30 MB |
+| **vision-mcp.ts** | MCP server for active vision | ~20 MB |
+| **cc-haha** | TUI interface + MCP + multi-agent | ~150 MB |
 
-**I tre modelli Ollama non girano mai insieme** (`OLLAMA_MAX_LOADED_MODELS=1`).  
-Worst case con uno solo caricato: ~3 GB modello + ~2.5 GB OS = ~5.5 GB su 8 GB.
+**The three Ollama models never load simultaneously** (`OLLAMA_MAX_LOADED_MODELS=1`).  
+Worst case with one model loaded: ~3 GB model + ~2.5 GB OS = ~5.5 GB out of 8 GB.
 
-## Setup (una volta sola)
+## Setup (one time)
 
-### Prerequisiti
+### Prerequisites
 - [Ollama](https://ollama.ai)
 - [Bun](https://bun.sh)
 - [Git for Windows](https://git-scm.com/download/win)
-- [cc-haha](https://github.com/NanmiCoder/cc-haha) installato
+- [cc-haha](https://github.com/NanmiCoder/cc-haha) installed
 
-### Installazione
+### Install
 
 ```powershell
-# 1. Clona questo repo accanto a cc-haha
+# 1. Clone this repo next to cc-haha-main
 git clone https://github.com/H8dboy/ai-arch-8gb
 cd ai-arch-8gb
 
-# 2. Setup (aggiunge `claude` al PATH, scarica i modelli, configura Ollama)
-.\setup.ps1
+# 2. Run setup (adds `skinny` to PATH, downloads models, configures Ollama)
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
 
-# 3. Configura cc-haha
+# 3. Copy env config to cc-haha
 copy .env.example ..\cc-haha-main\.env
-# modifica .env se cc-haha è in un percorso diverso
 
-# 4. Apri un nuovo terminale e digita:
-claude
+# 4. Open a new terminal and type:
+skinny
 ```
 
-Se cc-haha è in un percorso diverso:
+If cc-haha is in a different path:
 ```powershell
-$env:CCHAHA_DIR = "C:\percorso\cc-haha-main"
-claude
+set CCHAHA_DIR=C:\path\to\cc-haha-main
+skinny
 ```
 
-## Cosa puoi fare
+## What you can ask
 
 ```
-# Guarda lo schermo
-"guarda lo schermo e dimmi cosa c'è"
-"ho un errore, puoi vedere?"
+# Look at the screen
+"look at my screen and tell me what you see"
+"I have an error, can you see it?"
 
-# Contesto di lavoro
-"cosa stavo facendo prima?"
-"riassumi le ultime ore di lavoro"
+# Work context
+"what was I working on before?"
+"summarize my last few hours of work"
 
 # Coding (phi4-mini)
-"scrivi una funzione che legge un CSV"
-"trova il bug in questo codice"
+"write a function that reads a CSV file"
+"find the bug in this code"
 
-# Ricerca web (fetch MCP)
-"cerca la documentazione di Bun.serve"
-"trova le ultime novità su phi-4"
+# Web search (fetch MCP)
+"find the Bun.serve documentation"
+"what's new in phi-4?"
 
-# Task semplici (qwen, più veloce)
-"traduci questa frase"
-"spiega brevemente cos'è un mutex"
+# Fast tasks (qwen, faster response)
+"translate this sentence"
+"briefly explain what a mutex is"
 ```
 
-## File
+## Memory
 
-| File | Descrizione |
+Screen observations are saved to:
+```
+%USERPROFILE%\.claude\screen-memory\observations.md
+```
+
+The file is automatically trimmed above 400 KB. The `read_screen_memory` MCP tool lets the agent read recent observations without a screenshot.
+
+## Files
+
+| File | Description |
 |---|---|
-| `claude.cmd` | Comando principale — avvia tutto |
-| `proxy.ts` | Bridge Anthropic→Ollama con routing modelli |
-| `screen-watcher.ts` | Osservatore passivo schermo |
-| `vision-mcp.ts` | MCP server visione (see_screen, read_screen_memory) |
-| `setup.ps1` | Setup una-tantum |
-| `.env.example` | Configurazione cc-haha |
-| `.mcp.json` | Template MCP (rigenerato da claude.cmd) |
+| `skinny.cmd` | Main entry point — starts everything |
+| `proxy.ts` | Anthropic→Ollama bridge with model routing |
+| `screen-watcher.ts` | Passive screen observer |
+| `vision-mcp.ts` | MCP server: see_screen, read_screen_memory |
+| `setup.ps1` | One-time setup |
+| `.env.example` | cc-haha configuration template |
 
-## Hardware testato
+## Tested hardware
 
 ```
 CPU:  Intel Core i5-8265U @ 1.60GHz (4C/8T)
 RAM:  8 GB DDR4
-GPU:  AMD Radeon Pro WX3200 4GB — Ollama su CPU
+GPU:  AMD Radeon Pro WX3200 4GB — Ollama runs on CPU
 OS:   Windows 11 Pro
 ```

@@ -1,11 +1,11 @@
 /**
- * Vision MCP server — espone see_screen e read_screen_memory a cc-haha.
- * Claude Code lo chiama quando vuole vedere il desktop o leggere la memoria visiva.
- * Lanciato automaticamente da .mcp.json come processo stdio.
+ * Vision MCP server — exposes see_screen and read_screen_memory to cc-haha.
+ * Claude calls this when it needs to look at the desktop or read visual memory.
+ * Launched automatically via .mcp.json as a stdio process.
  */
 
 import { execSync } from "child_process";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 
 const OLLAMA_BASE  = "http://localhost:11434";
@@ -15,7 +15,7 @@ const MEMORY_FILE  = join(HOME, ".claude", "screen-memory", "observations.md");
 const SHOT_TMP     = join(process.env.TEMP ?? "C:\\Temp", "vision-mcp-screen.png");
 const PS1_PATH     = join(process.env.TEMP ?? "C:\\Temp", "vision-mcp-shot.ps1");
 
-// Script PowerShell per screenshot
+// Write PowerShell screenshot script once at startup
 writeFileSync(PS1_PATH, [
   "Add-Type -AssemblyName System.Windows.Forms",
   "Add-Type -AssemblyName System.Drawing",
@@ -48,16 +48,17 @@ async function seeScreen(): Promise<string> {
     signal: AbortSignal.timeout(120_000),
   });
 
-  if (!res.ok) return `[errore moondream: ${res.status}]`;
+  if (!res.ok) return `[moondream error: ${res.status}]`;
   const data = await res.json() as { response: string };
-  return data.response?.trim() || "[nessuna descrizione]";
+  return data.response?.trim() || "[no description returned]";
 }
 
 function readScreenMemory(lastN = 10): string {
-  if (!existsSync(MEMORY_FILE)) return "Nessuna osservazione disponibile. Lo screen-watcher non è ancora stato avviato.";
+  if (!existsSync(MEMORY_FILE))
+    return "No observations available. The screen-watcher has not been started yet.";
   const lines = readFileSync(MEMORY_FILE, "utf8").split("\n").filter(l => l.startsWith("**["));
   const recent = lines.slice(-lastN).join("\n");
-  return recent || "Nessuna osservazione ancora registrata.";
+  return recent || "No observations recorded yet.";
 }
 
 // ── MCP Protocol (stdio JSON-RPC 2.0) ────────────────────────────────────────
@@ -69,23 +70,23 @@ function send(msg: object) {
 const TOOLS = [
   {
     name: "see_screen",
-    description: "Scatta uno screenshot del desktop dell'utente e lo descrive. Usa questo tool quando l'utente chiede di guardare lo schermo, ha un errore visivo, vuole aiuto su cosa sta vedendo, o chiede 'cosa c'è sullo schermo'.",
+    description: "Takes a screenshot of the user's desktop and describes it. Use this when the user asks you to look at their screen, has a visual error, wants help with what they're seeing, or asks 'what's on my screen'.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
     name: "read_screen_memory",
-    description: "Legge le osservazioni recenti dello schermo accumulate in background. Usa questo tool per capire il contesto di lavoro dell'utente: cosa stava facendo prima, quali app ha usato, su cosa sta lavorando.",
+    description: "Reads recent screen observations accumulated in the background. Use this to understand the user's work context: what they were doing before, which apps they used, what they are working on.",
     inputSchema: {
       type: "object",
       properties: {
-        last_n: { type: "number", description: "Quante osservazioni recenti leggere (default 10)" },
+        last_n: { type: "number", description: "How many recent observations to read (default 10)" },
       },
     },
   },
 ];
 
 async function handleMessage(msg: Record<string, unknown>) {
-  const id = msg.id;
+  const id     = msg.id;
   const method = msg.method as string;
   const params = msg.params as Record<string, unknown> | undefined;
 
@@ -110,7 +111,7 @@ async function handleMessage(msg: Record<string, unknown>) {
         const mem = readScreenMemory((args.last_n as number) ?? 10);
         send({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: mem }] } });
       } else {
-        send({ jsonrpc: "2.0", id, error: { code: -32601, message: `Tool sconosciuto: ${name}` } });
+        send({ jsonrpc: "2.0", id, error: { code: -32601, message: `Unknown tool: ${name}` } });
       }
     } catch (e) {
       send({ jsonrpc: "2.0", id, error: { code: -32000, message: String(e) } });
@@ -120,7 +121,6 @@ async function handleMessage(msg: Record<string, unknown>) {
   }
 }
 
-// Leggi da stdin linea per linea
 let buf = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk: string) => {

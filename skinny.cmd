@@ -1,18 +1,18 @@
 @echo off
 :: ============================================================
-:: skinny — AI locale (phi4-mini + qwen + moondream)
-:: Uso: skinny              → avvia sessione interattiva
-::      skinny -p "prompt"  → modalità headless
+:: skinny — local AI (phi4-mini + qwen + moondream)
+:: Usage: skinny              → interactive session
+::        skinny -p "prompt"  → headless mode
 :: ============================================================
 setlocal EnableDelayedExpansion
 
 set "ARCH_DIR=%~dp0"
 if "%ARCH_DIR:~-1%"=="\" set "ARCH_DIR=%ARCH_DIR:~0,-1%"
 
-:: Percorso cc-haha (cartella parent per default)
+:: Path to cc-haha (parent folder by default)
 if "%CCHAHA_DIR%"=="" set "CCHAHA_DIR=%ARCH_DIR%\..\cc-haha-main"
 
-:: ── Scrivi .mcp.json con path assoluti ───────────────────────────────────────
+:: ── Write .mcp.json with absolute paths ──────────────────────────────────────
 set "MCP_FILE=%CCHAHA_DIR%\.mcp.json"
 set "VISION_PATH=%ARCH_DIR%\vision-mcp.ts"
 set "VISION_JSON=%VISION_PATH:\=/%"
@@ -30,21 +30,21 @@ set "VISION_JSON=%VISION_PATH:\=/%"
 >> "%MCP_FILE%" echo   }
 >> "%MCP_FILE%" echo }
 
-:: ── Avvia proxy se non già in ascolto ────────────────────────────────────────
+:: ── Start proxy if not already listening ─────────────────────────────────────
 curl -s http://localhost:4000/health >nul 2>&1
 if errorlevel 1 (
-    echo [skinny] Avvio proxy...
+    echo [skinny] Starting proxy...
     start /b "" bun "%ARCH_DIR%\proxy.ts"
     timeout /t 3 /nobreak >nul
 )
 
-:: ── Avvia screen-watcher se non già in esecuzione ────────────────────────────
+:: ── Start screen-watcher if not already running ──────────────────────────────
 tasklist /fi "imagename eq bun.exe" /fo csv 2>nul | find "screen-watcher" >nul 2>&1
 if errorlevel 1 (
-    echo [skinny] Avvio screen-watcher...
+    echo [skinny] Starting screen-watcher...
     start /b "" bun "%ARCH_DIR%\screen-watcher.ts"
 )
 
-:: ── Avvia cc-haha ─────────────────────────────────────────────────────────────
+:: ── Launch cc-haha ────────────────────────────────────────────────────────────
 cd /d "%CCHAHA_DIR%"
 bun --env-file=.env .\src\entrypoints\cli.tsx %*

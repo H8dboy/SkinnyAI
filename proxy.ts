@@ -1,6 +1,6 @@
 /**
- * Anthropic → Ollama proxy (Bun, zero dipendenze)
- * Converte le chiamate Anthropic Messages API in formato OpenAI per Ollama.
+ * Anthropic → Ollama proxy (Bun, zero dependencies)
+ * Converts Anthropic Messages API calls to OpenAI-compatible format for Ollama.
  * Run: bun proxy.ts
  */
 
@@ -8,18 +8,18 @@ const OLLAMA_BASE   = "http://localhost:11434/v1";
 const PORT          = 4000;
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL ?? "phi4-mini";
 
-// Il proxy usa il modello indicato nella richiesta (passato da cc-haha in base al task):
-//   ANTHROPIC_DEFAULT_HAIKU_MODEL  → qwen2.5-coder:1.5b  (task veloci/semplici)
+// The proxy uses the model specified in the request (set by cc-haha based on task type):
+//   ANTHROPIC_DEFAULT_HAIKU_MODEL  → qwen2.5-coder:1.5b  (fast, simple tasks)
 //   ANTHROPIC_DEFAULT_SONNET_MODEL → phi4-mini            (main agent, coding)
-//   ANTHROPIC_DEFAULT_OPUS_MODEL   → phi4-mini            (task complessi)
+//   ANTHROPIC_DEFAULT_OPUS_MODEL   → phi4-mini            (complex tasks)
 //
-// num_ctx adattato: modello piccolo → finestra più grande va bene, phi4 → conservativo
+// num_ctx is adapted per model: small model gets a larger window, phi4 stays conservative
 function resolveModel(requested: string): { model: string; numCtx: number } {
   if (requested.includes("qwen")) return { model: requested, numCtx: 8192 };
   return { model: requested || DEFAULT_MODEL, numCtx: 4096 };
 }
 
-// ── Tipi ─────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface AnthropicContent {
   type: string;
@@ -51,7 +51,7 @@ interface AnthropicRequest {
   top_p?: number;
 }
 
-// ── Conversione messaggi ───────────────────────────────────────────────────────
+// ── Message conversion ────────────────────────────────────────────────────────
 
 function extractText(content: string | AnthropicContent[]): string {
   if (typeof content === "string") return content;
@@ -76,8 +76,8 @@ function toOAIMessages(req: AnthropicRequest) {
     const blocks = msg.content;
 
     if (msg.role === "assistant") {
-      const textParts   = blocks.filter(b => b.type === "text");
-      const toolUse     = blocks.filter(b => b.type === "tool_use");
+      const textParts = blocks.filter(b => b.type === "text");
+      const toolUse   = blocks.filter(b => b.type === "tool_use");
       if (toolUse.length > 0) {
         out.push({
           role: "assistant",
@@ -266,11 +266,11 @@ Bun.serve({
       }
 
       const oaiRes = (await upstream.json()) as Record<string, unknown>;
-      return Response.json(toAnthropicResponse(oaiRes, body.model ?? MODEL));
+      return Response.json(toAnthropicResponse(oaiRes, body.model ?? model));
     }
 
     return Response.json({ error: "Not found" }, { status: 404 });
   },
 });
 
-console.log(`[proxy] http://localhost:${PORT}  →  ${MODEL} (num_ctx=${NUM_CTX})`);
+console.log(`[proxy] http://localhost:${PORT}  →  ${DEFAULT_MODEL}`);
