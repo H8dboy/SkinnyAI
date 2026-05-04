@@ -4,14 +4,20 @@
  * Run: bun proxy.ts
  */
 
-const OLLAMA_BASE = "http://localhost:11434/v1";
-const PORT        = 4000;
-const NUM_CTX     = 4096;          // finestra di contesto ridotta → meno RAM KV-cache
+const OLLAMA_BASE   = "http://localhost:11434/v1";
+const PORT          = 4000;
+const DEFAULT_MODEL = process.env.OLLAMA_MODEL ?? "phi4-mini";
 
-// Modello selezionabile via env: OLLAMA_MODEL=qwen2.5-coder:1.5b bun proxy.ts
-// phi4-mini  → qualità migliore, tool calling affidabile (~2.5 GB RAM)
-// qwen2.5-coder:1.5b → più veloce, meno RAM (~1 GB), buono per task semplici
-const MODEL = process.env.OLLAMA_MODEL ?? "phi4-mini";
+// Il proxy usa il modello indicato nella richiesta (passato da cc-haha in base al task):
+//   ANTHROPIC_DEFAULT_HAIKU_MODEL  → qwen2.5-coder:1.5b  (task veloci/semplici)
+//   ANTHROPIC_DEFAULT_SONNET_MODEL → phi4-mini            (main agent, coding)
+//   ANTHROPIC_DEFAULT_OPUS_MODEL   → phi4-mini            (task complessi)
+//
+// num_ctx adattato: modello piccolo → finestra più grande va bene, phi4 → conservativo
+function resolveModel(requested: string): { model: string; numCtx: number } {
+  if (requested.includes("qwen")) return { model: requested, numCtx: 8192 };
+  return { model: requested || DEFAULT_MODEL, numCtx: 4096 };
+}
 
 // ── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -152,7 +158,7 @@ function* convertChunk(
 
   if (!state.sentStart) {
     state.sentStart = true;
-    yield `event: message_start\ndata: {"type":"message_start","message":{"id":"msg_${Date.now()}","type":"message","role":"assistant","content":[],"model":"${MODEL}","stop_reason":null,"usage":{"input_tokens":0,"output_tokens":0}}}\n\n`;
+    yield `event: message_start\ndata: {"type":"message_start","message":{"id":"msg_${Date.now()}","type":"message","role":"assistant","content":[],"model":"${DEFAULT_MODEL}","stop_reason":null,"usage":{"input_tokens":0,"output_tokens":0}}}\n\n`;
     yield `event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n`;
   }
 
@@ -200,21 +206,23 @@ Bun.serve({
     const url = new URL(req.url);
 
     if (req.method === "GET" && url.pathname === "/health")
-      return Response.json({ status: "ok", model: MODEL, num_ctx: NUM_CTX });
+      return Response.json({ status: "ok", default_model: DEFAULT_MODEL });
 
     if (req.method === "POST" && url.pathname === "/v1/messages") {
       let body: AnthropicRequest;
       try { body = (await req.json()) as AnthropicRequest; }
       catch { return Response.json({ error: "Invalid JSON" }, { status: 400 }); }
 
+      const { model, numCtx } = resolveModel(body.model ?? DEFAULT_MODEL);
+      console.log(`[proxy] ${body.model ?? "?"} → ${model} (ctx=${numCtx})`);
+
       const oaiBody: Record<string, unknown> = {
-        model: MODEL,
+        model,
         messages: toOAIMessages(body),
         stream: body.stream ?? false,
         temperature: body.temperature,
         top_p: body.top_p,
-        // Ollama extension: limita il KV-cache per risparmiare RAM
-        options: { num_ctx: NUM_CTX },
+        options: { num_ctx: numCtx },
       };
       if (body.max_tokens)    oaiBody.max_tokens   = body.max_tokens;
       if (body.tools?.length) { oaiBody.tools = toOAITools(body.tools); oaiBody.tool_choice = "auto"; }
