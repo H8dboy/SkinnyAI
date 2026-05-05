@@ -29,8 +29,8 @@ set "VISION_JSON=%VISION_PATH:\=/%"
 > "%MCP_FILE%" echo {
 >> "%MCP_FILE%" echo   "mcpServers": {
 >> "%MCP_FILE%" echo     "fetch": {
->> "%MCP_FILE%" echo       "command": "npx",
->> "%MCP_FILE%" echo       "args": ["-y", "@modelcontextprotocol/server-fetch"]
+>> "%MCP_FILE%" echo       "command": "cmd",
+>> "%MCP_FILE%" echo       "args": ["/c", "npx", "-y", "@modelcontextprotocol/server-fetch"]
 >> "%MCP_FILE%" echo     },
 >> "%MCP_FILE%" echo     "vision": {
 >> "%MCP_FILE%" echo       "command": "bun",
