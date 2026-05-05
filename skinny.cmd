@@ -28,10 +28,10 @@ set "ENV_FILE=%CCHAHA_DIR%\.env"
 >> "%ENV_FILE%" echo API_TIMEOUT_MS=3000000
 >> "%ENV_FILE%" echo DISABLE_TELEMETRY=1
 >> "%ENV_FILE%" echo CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
->> "%ENV_FILE%" echo ANTHROPIC_MODEL=qwen2.5-coder:1.5b
+>> "%ENV_FILE%" echo ANTHROPIC_MODEL=qwen2.5-coder:0.5b
 >> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_SONNET_MODEL=qwen2.5-coder:1.5b
->> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen2.5-coder:1.5b
->> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_OPUS_MODEL=qwen2.5:7b-instruct-q3_K_M
+>> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_HAIKU_MODEL=smollm2:135m
+>> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_OPUS_MODEL=qwen2.5-coder:1.5b
 
 :: ── Write .mcp.json ───────────────────────────────────────────────────────────
 set "MCP_FILE=%CCHAHA_DIR%\.mcp.json"
@@ -70,12 +70,12 @@ goto wait_proxy
 :proxy_ready
 echo [skinny] Proxy ready.
 
-:: ── Pre-warm: load model into RAM BEFORE opening cc-haha ─────────────────────
-echo [skinny] Loading model into RAM...
-curl -s -X POST http://localhost:11434/api/generate ^
-  -H "Content-Type: application/json" ^
-  -d "{\"model\":\"qwen2.5-coder:1.5b\",\"prompt\":\"hi\",\"stream\":false,\"keep_alive\":-1,\"options\":{\"num_predict\":1,\"num_ctx\":512}}" > nul
-echo [skinny] Model ready.
+:: ── Pre-warm all 3 models into RAM with correct ctx ──────────────────────────
+echo [skinny] Loading models into RAM...
+curl -s -X POST http://localhost:11434/api/generate -H "Content-Type: application/json" -d "{\"model\":\"smollm2:135m\",\"prompt\":\"hi\",\"stream\":false,\"keep_alive\":-1,\"options\":{\"num_predict\":1,\"num_ctx\":256}}" > nul
+curl -s -X POST http://localhost:11434/api/generate -H "Content-Type: application/json" -d "{\"model\":\"qwen2.5-coder:0.5b\",\"prompt\":\"hi\",\"stream\":false,\"keep_alive\":-1,\"options\":{\"num_predict\":1,\"num_ctx\":512}}" > nul
+curl -s -X POST http://localhost:11434/api/generate -H "Content-Type: application/json" -d "{\"model\":\"qwen2.5-coder:1.5b\",\"prompt\":\"hi\",\"stream\":false,\"keep_alive\":-1,\"options\":{\"num_predict\":1,\"num_ctx\":512}}" > nul
+echo [skinny] Models ready.
 
 :: ── Launch cc-haha ────────────────────────────────────────────────────────────
 echo [skinny] Starting...

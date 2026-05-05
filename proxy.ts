@@ -64,6 +64,7 @@ function buildSuffix(stopped: boolean, allucined: boolean): string {
 // num_ctx is adapted per model: small model gets a larger window, phi4 stays conservative
 function resolveModel(requested: string, cluster: string): { model: string; numCtx: number } {
   if (requested.includes("7b") || requested.includes("7B")) return { model: requested, numCtx: 2048 };
+  if (requested.includes("135m") || requested.includes("smollm")) return { model: requested, numCtx: 256 };
   return { model: requested || DEFAULT_MODEL, numCtx: 512 };
 }
 
