@@ -14,7 +14,7 @@ process.on("uncaughtException",  (err) => console.error("[proxy] exception:", er
 
 const OLLAMA_BASE   = "http://localhost:11434/v1";
 const PORT          = 4000;
-const DEFAULT_MODEL = process.env.OLLAMA_MODEL ?? "phi4-mini";
+const DEFAULT_MODEL = process.env.OLLAMA_MODEL ?? "qwen2.5-coder:1.5b";
 
 // ── Nano-router helper ────────────────────────────────────────────────────────
 
@@ -56,14 +56,12 @@ function buildSuffix(stopped: boolean, allucined: boolean): string {
   return ""
 }
 
-// The proxy uses the model specified in the request (set by cc-haha based on task type):
-//   ANTHROPIC_DEFAULT_HAIKU_MODEL  → qwen2.5-coder:1.5b  (fast, simple tasks)
-//   ANTHROPIC_DEFAULT_SONNET_MODEL → phi4-mini            (main agent, coding)
-//   ANTHROPIC_DEFAULT_OPUS_MODEL   → phi4-mini            (complex tasks)
-//
-// num_ctx is adapted per model: small model gets a larger window, phi4 stays conservative
+// Model tiers (set in .env, picked by cc-haha per task type):
+//   ANTHROPIC_DEFAULT_HAIKU_MODEL  → smollm2:135m         (trivial: greetings, one-liners)
+//   ANTHROPIC_DEFAULT_SONNET_MODEL → qwen2.5-coder:1.5b   (main agent, coding, reasoning)
+//   ANTHROPIC_DEFAULT_OPUS_MODEL   → qwen2.5-coder:1.5b   (complex tasks)
+// num_ctx must match pre-warm values in skinny.cmd to avoid Ollama model reload
 function resolveModel(requested: string, cluster: string): { model: string; numCtx: number } {
-  if (requested.includes("7b") || requested.includes("7B")) return { model: requested, numCtx: 2048 };
   if (requested.includes("135m") || requested.includes("smollm")) return { model: requested, numCtx: 256 };
   return { model: requested || DEFAULT_MODEL, numCtx: 512 };
 }

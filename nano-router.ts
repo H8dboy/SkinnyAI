@@ -5,7 +5,7 @@
  * Routing a tre livelli (dal più specifico al più generico):
  *   1. Phrase patterns (regex, peso 3) — cattura "perché il mio codice non va"
  *   2. Token set (parole singole EN+IT, peso 1) — cattura keyword esplicite
- *   3. Fallback: trivial → qwen
+ *   3. Fallback: trivial → smollm2:135m
  */
 
 import { readFileSync, existsSync } from "fs"
@@ -206,20 +206,20 @@ export function route(query: string): { model: string | null; scaffold: string; 
 
   const trimmed   = query.trim()
   const wordCount = trimmed.split(/\s+/).length
-  const qwen      = config.clusters[0]
+  const trivial   = config.clusters[0]
 
-  // Short / trivial queries → always qwen (fast)
+  // Short / trivial queries → always smollm2:135m (fastest)
   if (wordCount <= 3) {
     const isAllTrivial = trimmed.toLowerCase().split(/\s+/).every(w => TRIVIAL_WORDS.has(w))
     if (isAllTrivial || wordCount === 1)
-      return { model: qwen.model, scaffold: qwen.scaffold, cluster: qwen.label }
+      return { model: trivial.model, scaffold: trivial.scaffold, cluster: trivial.label }
   }
 
   const { coding, reasoning } = scoreQuery(query)
 
-  // Not enough signal → qwen as safe default (faster than phi4-mini for anything simple)
+  // Not enough signal → trivial as safe default
   if (coding + reasoning < 3)
-    return { model: qwen.model, scaffold: qwen.scaffold, cluster: qwen.label }
+    return { model: trivial.model, scaffold: trivial.scaffold, cluster: trivial.label }
 
   const winner = coding >= reasoning ? 1 : 2
   const c = config.clusters[winner]
