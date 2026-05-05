@@ -239,11 +239,8 @@ function* convertChunk(line: string, state: StreamState): Generator<string> {
   if (choices[0].finish_reason) {
     // ── Inspector: inject suffix before closing the text block ─────────────────
     if (state.accumulated) {
-      const { stopped, allucined, log } = inspect(state.query, state.accumulated, state.cluster, state.history);
+      const { log } = inspect(state.query, state.accumulated, state.cluster, state.history);
       if (log.length) console.log(`[inspector] ${log.join(" | ")}`);
-      const suffix = buildSuffix(stopped, allucined);
-      if (suffix)
-        yield `event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":${JSON.stringify(suffix)}}}\n\n`;
     }
 
     yield `event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n`;
@@ -298,6 +295,12 @@ Bun.serve({
             else body.system.unshift({ type: "text", text: scaffold });
           }
         }
+      }
+
+      // smollm2 (135m) can't handle tool calls — upgrade to coding tier
+      if (body.tools?.length && (body.model ?? "").match(/smollm|135m/)) {
+        body.model = "qwen2.5-coder:0.5b";
+        routedCluster = "coding";
       }
 
       // ── Task planner: append step-by-step scaffold to system prompt ───────────
@@ -380,9 +383,9 @@ Bun.serve({
       const resp   = toAnthropicResponse(oaiRes, body.model ?? model);
       for (const block of resp.content as { type: string; text?: string }[]) {
         if (block.type === "text" && block.text !== undefined) {
-          const { text, stopped, allucined, log } = inspect(lastUserText, block.text, routedCluster, msgHistory);
+          const { text, log } = inspect(lastUserText, block.text, routedCluster, msgHistory);
           if (log.length) console.log(`[inspector] ${log.join(" | ")}`);
-          block.text = text + buildSuffix(stopped, allucined);
+          block.text = text;
         }
       }
       return Response.json(resp);

@@ -185,9 +185,9 @@ function checkAllucined(
   if (/version \d+\.\d+/i.test(response) && !/version|\d+\.\d+/i.test(query))
     reasons.push("version number not requested in query")
 
-  // Low relevance to query
+  // Low relevance to query (only for substantive queries)
   const score = relevance(query, response)
-  if (score < 0.25 && keyTerms(query).size >= 3)
+  if (score < 0.15 && keyTerms(query).size >= 6)
     reasons.push(`low relevance score: ${score.toFixed(2)}`)
 
   // Repeated contradictory sentences (negation flip)
@@ -205,7 +205,7 @@ function checkAllucined(
     const responseTerms = keyTerms(response)
     const queryTerms    = keyTerms(query)
     const novel = [...responseTerms].filter(t => !queryTerms.has(t) && t.length > 5)
-    if (novel.length > queryTerms.size * 2 && queryTerms.size >= 3)
+    if (novel.length > queryTerms.size * 5 && queryTerms.size >= 6)
       reasons.push(`many novel topics introduced: ${novel.slice(0, 5).join(", ")}`)
   }
 
@@ -246,8 +246,10 @@ export function inspect(
   const stopped = checkStopped(query, text)
   if (stopped.flag) log.push(`-stopped: ${stopped.reason}`)
 
-  // 4. -allucined check
-  const allucined = checkAllucined(query, text, history)
+  // 4. -allucined check (skip for trivial — greetings and one-liners are always fine)
+  const allucined = cluster === "trivial"
+    ? { flag: false, reasons: [] }
+    : checkAllucined(query, text, history)
   for (const r of allucined.reasons) log.push(`-allucined: ${r}`)
 
   return {
