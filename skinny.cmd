@@ -39,6 +39,12 @@ set "VISION_JSON=%VISION_PATH:\=/%"
 >> "%MCP_FILE%" echo   }
 >> "%MCP_FILE%" echo }
 
+:: ── Build routing map on first run ──────────────────────────────────────────
+if not exist "%ARCH_DIR%\routing\routing-config.json" (
+    echo [skinny] First run: reading model DNA, please wait...
+    bun "%ARCH_DIR%\dna-reader.ts"
+)
+
 :: ── Start proxy in its own hidden window ─────────────────────────────────────
 curl -s http://localhost:4000/health >nul 2>&1
 if errorlevel 1 (

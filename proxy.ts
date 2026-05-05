@@ -4,9 +4,53 @@
  * Run: bun proxy.ts
  */
 
+import { init as routerInit, route, isReady as routerReady } from "./nano-router.ts";
+import { inspect, type HistoryCtx } from "./inspector.ts";
+routerInit();
+
 const OLLAMA_BASE   = "http://localhost:11434/v1";
 const PORT          = 4000;
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL ?? "phi4-mini";
+
+// ── Nano-router helper ────────────────────────────────────────────────────────
+
+function extractLastUserText(messages: AnthropicMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "user") return extractText(messages[i].content);
+  }
+  return "";
+}
+
+function buildHistory(messages: AnthropicMessage[]): HistoryCtx {
+  const priorReplies: string[] = []
+  const priorTopics  = new Set<string>()
+  const STOP = new Set(["the","a","an","is","are","to","of","and","or","in","on","it","this"])
+  let turnCount = 0
+
+  for (let i = 0; i < messages.length - 1; i++) {
+    const m = messages[i]
+    if (m.role === "assistant") {
+      const text = extractText(m.content)
+      priorReplies.push(text)
+      turnCount++
+      const terms = text.toLowerCase().match(/\b[a-z][a-z0-9_]{3,}\b/g) ?? []
+      for (const t of terms) if (!STOP.has(t)) priorTopics.add(t)
+    }
+  }
+
+  return {
+    turnCount,
+    priorTopics: [...priorTopics].slice(0, 200),
+    priorReplies: priorReplies.slice(-3).map(r => r.slice(0, 600)),
+  }
+}
+
+function buildSuffix(stopped: boolean, allucined: boolean): string {
+  if (stopped && allucined) return " -stopped -allucined"
+  if (stopped)   return " -stopped"
+  if (allucined) return " -allucined"
+  return ""
+}
 
 // The proxy uses the model specified in the request (set by cc-haha based on task type):
 //   ANTHROPIC_DEFAULT_HAIKU_MODEL  → qwen2.5-coder:1.5b  (fast, simple tasks)
@@ -145,10 +189,16 @@ function toAnthropicResponse(oai: Record<string, unknown>, model: string) {
 
 // ── Streaming SSE conversion ──────────────────────────────────────────────────
 
-function* convertChunk(
-  line: string,
-  state: { sentStart: boolean; toolAccum: Map<number, { id: string; name: string; args: string }> }
-): Generator<string> {
+interface StreamState {
+  sentStart:   boolean;
+  toolAccum:   Map<number, { id: string; name: string; args: string }>;
+  accumulated: string;       // full text built up across deltas
+  query:       string;       // original user query
+  cluster:     string;       // routing cluster label
+  history:     HistoryCtx;   // cross-turn context for inspector
+}
+
+function* convertChunk(line: string, state: StreamState): Generator<string> {
   if (!line.startsWith("data: ")) return;
   const raw = line.slice(6).trim();
   if (raw === "[DONE]") { yield `event: message_stop\ndata: {"type":"message_stop"}\n\n`; return; }
@@ -167,8 +217,10 @@ function* convertChunk(
   const delta = choices[0].delta as Record<string, unknown> | undefined;
   if (!delta) return;
 
-  if (delta.content && typeof delta.content === "string")
+  if (delta.content && typeof delta.content === "string") {
+    state.accumulated += delta.content;
     yield `event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":${JSON.stringify(delta.content)}}}\n\n`;
+  }
 
   const tcDeltas = delta.tool_calls as { index: number; id?: string; function?: { name?: string; arguments?: string } }[] | undefined;
   if (tcDeltas) {
@@ -182,6 +234,15 @@ function* convertChunk(
   }
 
   if (choices[0].finish_reason) {
+    // ── Inspector: inject suffix before closing the text block ─────────────────
+    if (state.accumulated) {
+      const { stopped, allucined, log } = inspect(state.query, state.accumulated, state.cluster, state.history);
+      if (log.length) console.log(`[inspector] ${log.join(" | ")}`);
+      const suffix = buildSuffix(stopped, allucined);
+      if (suffix)
+        yield `event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":${JSON.stringify(suffix)}}}\n\n`;
+    }
+
     yield `event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n`;
     let bi = 1;
     for (const [, acc] of state.toolAccum) {
@@ -212,6 +273,29 @@ Bun.serve({
       let body: AnthropicRequest;
       try { body = (await req.json()) as AnthropicRequest; }
       catch { return Response.json({ error: "Invalid JSON" }, { status: 400 }); }
+
+      // ── Nano-router + Inspector setup ─────────────────────────────────────────
+      const lastUserText   = extractLastUserText(body.messages);
+      const msgHistory     = buildHistory(body.messages);
+      let   routedCluster  = "trivial";
+
+      if (routerReady()) {
+        const { model: nanoModel, scaffold, cluster } = route(lastUserText);
+
+        if (nanoModel) { body.model = nanoModel; routedCluster = cluster; }
+
+        if (scaffold) {
+          if (!body.system) {
+            body.system = scaffold;
+          } else if (typeof body.system === "string") {
+            body.system = scaffold + "\n\n" + body.system;
+          } else {
+            const first = body.system.find(b => b.type === "text");
+            if (first) first.text = scaffold + "\n\n" + first.text;
+            else body.system.unshift({ type: "text", text: scaffold });
+          }
+        }
+      }
 
       const { model, numCtx } = resolveModel(body.model ?? DEFAULT_MODEL);
       console.log(`[proxy] ${body.model ?? "?"} → ${model} (ctx=${numCtx})`);
@@ -244,7 +328,14 @@ Bun.serve({
         const writer = writable.getWriter();
         const enc = new TextEncoder();
         (async () => {
-          const state = { sentStart: false, toolAccum: new Map<number, { id: string; name: string; args: string }>() };
+          const state: StreamState = {
+            sentStart:   false,
+            toolAccum:   new Map<number, { id: string; name: string; args: string }>(),
+            accumulated: "",
+            query:       lastUserText,
+            cluster:     routedCluster,
+            history:     msgHistory,
+          };
           const reader = upstream.body!.getReader();
           const dec = new TextDecoder();
           let buf = "";
@@ -266,7 +357,15 @@ Bun.serve({
       }
 
       const oaiRes = (await upstream.json()) as Record<string, unknown>;
-      return Response.json(toAnthropicResponse(oaiRes, body.model ?? model));
+      const resp   = toAnthropicResponse(oaiRes, body.model ?? model);
+      for (const block of resp.content as { type: string; text?: string }[]) {
+        if (block.type === "text" && block.text !== undefined) {
+          const { text, stopped, allucined, log } = inspect(lastUserText, block.text, routedCluster, msgHistory);
+          if (log.length) console.log(`[inspector] ${log.join(" | ")}`);
+          block.text = text + buildSuffix(stopped, allucined);
+        }
+      }
+      return Response.json(resp);
     }
 
     return Response.json({ error: "Not found" }, { status: 404 });
