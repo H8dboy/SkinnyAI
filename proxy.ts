@@ -328,7 +328,7 @@ Bun.serve({
         options: { num_ctx: numCtx },
         keep_alive: -1,
       };
-      if (body.max_tokens)    oaiBody.max_tokens   = body.max_tokens;
+      oaiBody.max_tokens = Math.max(body.max_tokens ?? 0, 512);
       if (body.tools?.length) { oaiBody.tools = toOAITools(body.tools); oaiBody.tool_choice = "auto"; }
 
       const upstream = await fetch(`${OLLAMA_BASE}/chat/completions`, {

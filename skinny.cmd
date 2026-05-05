@@ -58,6 +58,7 @@ for /f "tokens=5" %%p in ('netstat -ano 2^>nul ^| findstr ":4000 "') do (
     taskkill /PID %%p /F >nul 2>&1
 )
 
+set "OLLAMA_MODEL=qwen2.5-coder:1.5b"
 echo [skinny] Starting proxy...
 start "skinny-proxy" /min "%ARCH_DIR%\proxy-run.cmd"
 
