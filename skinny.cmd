@@ -59,8 +59,7 @@ for /f "tokens=5" %%p in ('netstat -ano 2^>nul ^| findstr ":4000 "') do (
 )
 
 echo [skinny] Starting proxy...
-:: NOTE: no inner quotes around path — ARCH_DIR has no spaces
-start "skinny-proxy" /min cmd /c bun %ARCH_DIR%\proxy.ts > %TEMP%\skinny-proxy.log 2>&1
+start "skinny-proxy" /min "%ARCH_DIR%\proxy-run.cmd"
 
 :wait_proxy
 curl -s http://localhost:4000/health >nul 2>&1
