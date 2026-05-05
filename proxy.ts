@@ -6,6 +6,7 @@
 
 import { init as routerInit, route, isReady as routerReady } from "./nano-router.ts";
 import { inspect, type HistoryCtx } from "./inspector.ts";
+import { plan } from "./planner.ts";
 routerInit();
 
 const OLLAMA_BASE   = "http://localhost:11434/v1";
@@ -59,7 +60,8 @@ function buildSuffix(stopped: boolean, allucined: boolean): string {
 //
 // num_ctx is adapted per model: small model gets a larger window, phi4 stays conservative
 function resolveModel(requested: string): { model: string; numCtx: number } {
-  if (requested.includes("qwen")) return { model: requested, numCtx: 6144 };
+  if (requested.includes("7b") || requested.includes("7B")) return { model: requested, numCtx: 3072 };
+  if (requested.includes("qwen")) return { model: requested, numCtx: 2048 };
   return { model: requested || DEFAULT_MODEL, numCtx: 2048 };
 }
 
@@ -295,6 +297,22 @@ Bun.serve({
             else body.system.unshift({ type: "text", text: scaffold });
           }
         }
+      }
+
+      // ── Task planner: append step-by-step scaffold to system prompt ───────────
+      const taskPlan = plan(lastUserText, routedCluster, Boolean(body.tools?.length))
+      if (taskPlan) {
+        const ps = "\n\n" + taskPlan.scaffold
+        if (!body.system) {
+          body.system = taskPlan.scaffold
+        } else if (typeof body.system === "string") {
+          body.system += ps
+        } else {
+          const last = [...body.system].reverse().find(b => b.type === "text")
+          if (last) last.text += ps
+          else body.system.push({ type: "text", text: taskPlan.scaffold })
+        }
+        console.log(`[planner] ${taskPlan.type}`)
       }
 
       const { model, numCtx } = resolveModel(body.model ?? DEFAULT_MODEL);

@@ -11,14 +11,16 @@ Write-Host ""
 
 # ── 1. Set permanent Ollama environment variables ─────────────────────────────
 Write-Host "[1/4] Setting Ollama environment variables..." -ForegroundColor Yellow
-[System.Environment]::SetEnvironmentVariable("OLLAMA_MAX_LOADED_MODELS", "1",   "User")
-[System.Environment]::SetEnvironmentVariable("OLLAMA_NUM_PARALLEL",      "1",   "User")
-[System.Environment]::SetEnvironmentVariable("OLLAMA_KEEP_ALIVE",        "-1",  "User")
-[System.Environment]::SetEnvironmentVariable("OLLAMA_NUM_THREADS",       "$([Environment]::ProcessorCount)", "User")
+[System.Environment]::SetEnvironmentVariable("OLLAMA_MAX_LOADED_MODELS", "1",    "User")
+[System.Environment]::SetEnvironmentVariable("OLLAMA_NUM_PARALLEL",      "1",    "User")
+[System.Environment]::SetEnvironmentVariable("OLLAMA_KEEP_ALIVE",        "30s",  "User")
+[System.Environment]::SetEnvironmentVariable("OLLAMA_FLASH_ATTENTION",   "1",    "User")
+[System.Environment]::SetEnvironmentVariable("OLLAMA_KV_CACHE_TYPE",     "q8_0", "User")
 $env:OLLAMA_MAX_LOADED_MODELS = "1"
 $env:OLLAMA_NUM_PARALLEL      = "1"
-$env:OLLAMA_KEEP_ALIVE        = "-1"
-$env:OLLAMA_NUM_THREADS       = [Environment]::ProcessorCount
+$env:OLLAMA_KEEP_ALIVE        = "30s"
+$env:OLLAMA_FLASH_ATTENTION   = "1"
+$env:OLLAMA_KV_CACHE_TYPE     = "q8_0"
 Write-Host "   Done" -ForegroundColor Green
 
 # ── 2. Add ai-arch-8gb to user PATH ──────────────────────────────────────────
@@ -45,10 +47,6 @@ Write-Host "   Done" -ForegroundColor Green
 Write-Host "[4/4] Downloading Ollama models..." -ForegroundColor Yellow
 $models = (Invoke-RestMethod -Uri "http://localhost:11434/api/tags").models.name
 
-if (-not ($models -like "*phi4-mini*")) {
-    Write-Host "   phi4-mini (~2.5 GB)..." -ForegroundColor DarkYellow
-    & ollama pull phi4-mini
-}
 if (-not ($models -like "*qwen2.5-coder*")) {
     Write-Host "   qwen2.5-coder:1.5b (~1 GB)..." -ForegroundColor DarkYellow
     & ollama pull qwen2.5-coder:1.5b

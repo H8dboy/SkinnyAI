@@ -1,6 +1,6 @@
 # ============================================================
-# AI Architecture 8GB RAM — startup script
-# Starts: Ollama (optimized) + proxy + screen-watcher + cc-haha
+# AI Architecture 4GB RAM — startup script
+# Starts: Ollama (optimized) + proxy + cc-haha
 # ============================================================
 param(
     [string]$CcHahaPath = $env:CCHAHA_DIR
@@ -12,7 +12,9 @@ $ROOT = $PSScriptRoot
 # ── 1. Ollama variables — one model in RAM at a time ──────────────────────────
 $env:OLLAMA_MAX_LOADED_MODELS = "1"   # automatic swap, never two models at once
 $env:OLLAMA_NUM_PARALLEL      = "1"   # one request at a time → no RAM contention
-$env:OLLAMA_KEEP_ALIVE        = "-1"  # keep model in RAM forever (unload only on Ollama stop)
+$env:OLLAMA_KEEP_ALIVE        = "30s" # unload model after 30s of inactivity (4 GB mode)
+$env:OLLAMA_FLASH_ATTENTION   = "1"   # reduces KV cache RAM ~20%
+$env:OLLAMA_KV_CACHE_TYPE     = "q8_0" # quantized KV cache → less RAM during inference
 
 # ── 2. Restart Ollama with new variables ──────────────────────────────────────
 Write-Host "[start] Restarting Ollama with optimized settings..." -ForegroundColor Cyan
@@ -34,9 +36,9 @@ try {
 
 # ── 3. Pull models if not present ─────────────────────────────────────────────
 $models = (Invoke-RestMethod -Uri "http://localhost:11434/api/tags").models.name
-if (-not ($models -like "*phi4-mini*")) {
-    Write-Host "[start] Downloading phi4-mini (~2.5 GB, first time)..." -ForegroundColor Yellow
-    & ollama pull phi4-mini
+if (-not ($models -like "*qwen2.5:7b-instruct-q3_K_M*")) {
+    Write-Host "[start] Downloading qwen2.5:7b-instruct-q3_K_M (~3.8 GB, first time)..." -ForegroundColor Yellow
+    & ollama pull qwen2.5:7b-instruct-q3_K_M
 }
 if (-not ($models -like "*qwen2.5-coder*")) {
     Write-Host "[start] Downloading qwen2.5-coder:1.5b (~1 GB, first time)..." -ForegroundColor Yellow
@@ -45,6 +47,10 @@ if (-not ($models -like "*qwen2.5-coder*")) {
 if (-not ($models -like "*moondream*")) {
     Write-Host "[start] Downloading moondream (~1.7 GB, first time)..." -ForegroundColor Yellow
     & ollama pull moondream
+}
+if (-not ($models -like "*nomic-embed-text*")) {
+    Write-Host "[start] Downloading nomic-embed-text (~274 MB, first time)..." -ForegroundColor Yellow
+    & ollama pull nomic-embed-text
 }
 
 # ── 4. Proxy (background) ─────────────────────────────────────────────────────
@@ -59,12 +65,7 @@ try {
     Write-Host "[start] WARNING: proxy not responding." -ForegroundColor Yellow
 }
 
-# ── 5. Screen watcher (background) ───────────────────────────────────────────
-Write-Host "[start] Starting screen watcher..." -ForegroundColor Cyan
-Start-Process -FilePath "bun" -ArgumentList "screen-watcher.ts" -WorkingDirectory $ROOT -WindowStyle Hidden
-Write-Host "[start] Screen watcher running in background." -ForegroundColor Green
-
-# ── 6. cc-haha (foreground) ──────────────────────────────────────────────────
+# ── 5. cc-haha (foreground) ──────────────────────────────────────────────────
 if (-not $CcHahaPath) {
     Write-Host "[start] ERROR: CCHAHA_DIR is not set." -ForegroundColor Red
     Write-Host "        Run: set CCHAHA_DIR=C:\path\to\cc-haha-main && skinny" -ForegroundColor Yellow
@@ -78,7 +79,7 @@ if (-not (Test-Path $CcHahaPath)) {
 
 Write-Host ""
 Write-Host "======================================================" -ForegroundColor DarkGray
-Write-Host "  AI ready  |  phi4-mini / qwen + moondream + fetch MCP" -ForegroundColor White
+Write-Host "  AI ready  |  qwen2.5:7b-q3 (main) + qwen2.5-coder:1.5b (fast) + moondream (vision)" -ForegroundColor White
 Write-Host "  Change model: edit ANTHROPIC_MODEL in .env" -ForegroundColor DarkGray
 Write-Host "======================================================" -ForegroundColor DarkGray
 Write-Host ""

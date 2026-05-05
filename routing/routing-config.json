@@ -1,0 +1,27 @@
+{
+  "clusters": [
+    {
+      "id": 0,
+      "label": "trivial",
+      "model": "qwen2.5-coder:1.5b",
+      "scaffold": "Answer directly and concisely. No preamble."
+    },
+    {
+      "id": 1,
+      "label": "coding",
+      "model": "qwen2.5-coder:1.5b",
+      "scaffold": "[coding] Provide working, correct code. No introductory sentences. Structure: brief analysis → solution → code block."
+    },
+    {
+      "id": 2,
+      "label": "reasoning",
+      "model": "qwen2.5:7b-instruct-q3_K_M",
+      "scaffold": "[reasoning] Think step by step. Be precise and concise. No repetition."
+    }
+  ],
+  "models": [
+    "qwen2.5-coder:1.5b",
+    "qwen2.5:7b-instruct-q3_K_M"
+  ],
+  "built": "2026-05-05T08:45:00.000Z"
+}
