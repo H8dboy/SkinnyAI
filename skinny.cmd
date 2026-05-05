@@ -13,15 +13,15 @@ if "%ARCH_DIR:~-1%"=="\" set "ARCH_DIR=%ARCH_DIR:~0,-1%"
 if "%CCHAHA_DIR%"=="" (
     echo [skinny] ERROR: CCHAHA_DIR is not set.
     echo         Run setup.ps1 or set: CCHAHA_DIR=C:\path\to\cc-haha-main
-    exit /b 1
+    pause & exit /b 1
 )
 
 if not exist "%CCHAHA_DIR%" (
     echo [skinny] ERROR: cc-haha not found at %CCHAHA_DIR%
-    exit /b 1
+    pause & exit /b 1
 )
 
-:: ── Write .env (keeps model config in sync with arch) ────────────────────────
+:: ── Write .env ────────────────────────────────────────────────────────────────
 set "ENV_FILE=%CCHAHA_DIR%\.env"
 > "%ENV_FILE%" echo ANTHROPIC_AUTH_TOKEN=sk-anything
 >> "%ENV_FILE%" echo ANTHROPIC_BASE_URL=http://localhost:4000
@@ -33,7 +33,7 @@ set "ENV_FILE=%CCHAHA_DIR%\.env"
 >> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen2.5-coder:1.5b
 >> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_OPUS_MODEL=qwen2.5:7b-instruct-q3_K_M
 
-:: ── Write .mcp.json with absolute paths ──────────────────────────────────────
+:: ── Write .mcp.json ───────────────────────────────────────────────────────────
 set "MCP_FILE=%CCHAHA_DIR%\.mcp.json"
 set "FETCH_PATH=%ARCH_DIR%\fetch-mcp.ts"
 set "FETCH_JSON=%FETCH_PATH:\=/%"
@@ -53,22 +53,28 @@ set "VISION_JSON=%VISION_PATH:\=/%"
 >> "%MCP_FILE%" echo   }
 >> "%MCP_FILE%" echo }
 
-:: ── Kill whatever is on port 4000, start fresh proxy ────────────────────────
+:: ── Kill old proxy, start fresh ───────────────────────────────────────────────
 for /f "tokens=5" %%p in ('netstat -ano 2^>nul ^| findstr ":4000 "') do (
     taskkill /PID %%p /F >nul 2>&1
 )
+
 echo [skinny] Starting proxy...
-start "skinny-proxy" /min cmd /c "bun "%ARCH_DIR%\proxy.ts" >> "%TEMP%\skinny-proxy.log" 2>&1"
+:: NOTE: no inner quotes around path — ARCH_DIR has no spaces
+start "skinny-proxy" /min cmd /c bun %ARCH_DIR%\proxy.ts > %TEMP%\skinny-proxy.log 2>&1
 
 :wait_proxy
 curl -s http://localhost:4000/health >nul 2>&1
-if errorlevel 1 ( timeout /t 1 /nobreak >nul & goto wait_proxy )
+if not errorlevel 1 goto proxy_ready
+timeout /t 1 /nobreak >nul
+goto wait_proxy
+
+:proxy_ready
 echo [skinny] Proxy ready.
 
-:: ── Pre-warm qwen2.5-coder:1.5b in background (non-blocking) ────────────────
+:: ── Pre-warm model in background (non-blocking) ───────────────────────────────
 start /b powershell -WindowStyle Hidden -Command "Invoke-RestMethod -Uri http://localhost:11434/api/generate -Method Post -ContentType application/json -Body '{\"model\":\"qwen2.5-coder:1.5b\",\"prompt\":\"hi\",\"stream\":false,\"keep_alive\":-1,\"options\":{\"num_predict\":1}}' -ErrorAction SilentlyContinue | Out-Null"
 
-:: ── Launch cc-haha in this terminal (clean output for TUI) ───────────────────
+:: ── Launch cc-haha ────────────────────────────────────────────────────────────
 echo [skinny] Starting...
 echo.
 cd /d "%CCHAHA_DIR%"
