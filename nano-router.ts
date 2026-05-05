@@ -192,14 +192,34 @@ function scoreQuery(query: string): { coding: number; reasoning: number } {
   return { coding, reasoning }
 }
 
+const TRIVIAL_WORDS = new Set([
+  // greetings EN
+  "hi","hello","hey","thanks","thank","ok","okay","yes","no","sure","bye","good",
+  // greetings IT
+  "ciao","salve","buongiorno","buonasera","buonanotte","grazie","prego","sì","no",
+  "ok","bene","perfetto","esatto","capito","giusto","vero","dai","allora","va",
+])
+
 export function route(query: string): { model: string | null; scaffold: string; cluster: string } {
   const none = { model: null, scaffold: "", cluster: "trivial" }
   if (!config) return none
 
+  const trimmed   = query.trim()
+  const wordCount = trimmed.split(/\s+/).length
+  const qwen      = config.clusters[0]
+
+  // Short / trivial queries → always qwen (fast)
+  if (wordCount <= 3) {
+    const isAllTrivial = trimmed.toLowerCase().split(/\s+/).every(w => TRIVIAL_WORDS.has(w))
+    if (isAllTrivial || wordCount === 1)
+      return { model: qwen.model, scaffold: qwen.scaffold, cluster: qwen.label }
+  }
+
   const { coding, reasoning } = scoreQuery(query)
 
-  // Minimum threshold: at least 3 weighted points to act
-  if (coding + reasoning < 3) return none
+  // Not enough signal → qwen as safe default (faster than phi4-mini for anything simple)
+  if (coding + reasoning < 3)
+    return { model: qwen.model, scaffold: qwen.scaffold, cluster: qwen.label }
 
   const winner = coding >= reasoning ? 1 : 2
   const c = config.clusters[winner]
