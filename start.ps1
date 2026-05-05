@@ -12,7 +12,7 @@ $ROOT = $PSScriptRoot
 # ── 1. Ollama variables — one model in RAM at a time ──────────────────────────
 $env:OLLAMA_MAX_LOADED_MODELS = "1"   # automatic swap, never two models at once
 $env:OLLAMA_NUM_PARALLEL      = "1"   # one request at a time → no RAM contention
-$env:OLLAMA_KEEP_ALIVE        = "2m"  # unload model after 2 min of inactivity
+$env:OLLAMA_KEEP_ALIVE        = "-1"  # keep model in RAM forever (unload only on Ollama stop)
 
 # ── 2. Restart Ollama with new variables ──────────────────────────────────────
 Write-Host "[start] Restarting Ollama with optimized settings..." -ForegroundColor Cyan

@@ -53,15 +53,6 @@ if errorlevel 1 (
     timeout /t 3 /nobreak >nul
 )
 
-:: ── Pre-warm phi4-mini (synchronous — cc-haha starts only after model is hot) ──
-:: Only phi4-mini: with OLLAMA_MAX_LOADED_MODELS=1 loading qwen would evict it.
-echo [skinny] Loading phi4-mini into RAM...
-curl -s -X POST http://localhost:11434/api/generate ^
-    -H "Content-Type: application/json" ^
-    -d "{\"model\":\"phi4-mini\",\"prompt\":\"hi\",\"stream\":false,\"options\":{\"num_predict\":1}}" ^
-    >nul 2>&1
-echo [skinny] Model ready.
-
 :: ── Start screen-watcher in its own hidden window ─────────────────────────────
 tasklist /fi "imagename eq bun.exe" /fo csv 2>nul | find /i "screen-watcher" >nul 2>&1
 if errorlevel 1 (

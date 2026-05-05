@@ -13,11 +13,11 @@ Write-Host ""
 Write-Host "[1/4] Setting Ollama environment variables..." -ForegroundColor Yellow
 [System.Environment]::SetEnvironmentVariable("OLLAMA_MAX_LOADED_MODELS", "1",   "User")
 [System.Environment]::SetEnvironmentVariable("OLLAMA_NUM_PARALLEL",      "1",   "User")
-[System.Environment]::SetEnvironmentVariable("OLLAMA_KEEP_ALIVE",        "10m", "User")
+[System.Environment]::SetEnvironmentVariable("OLLAMA_KEEP_ALIVE",        "-1",  "User")
 [System.Environment]::SetEnvironmentVariable("OLLAMA_NUM_THREADS",       "$([Environment]::ProcessorCount)", "User")
 $env:OLLAMA_MAX_LOADED_MODELS = "1"
 $env:OLLAMA_NUM_PARALLEL      = "1"
-$env:OLLAMA_KEEP_ALIVE        = "10m"
+$env:OLLAMA_KEEP_ALIVE        = "-1"
 $env:OLLAMA_NUM_THREADS       = [Environment]::ProcessorCount
 Write-Host "   Done" -ForegroundColor Green
 
