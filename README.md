@@ -1,6 +1,12 @@
-# SkinnyAI — Local AI for Low-End PCs
+# SkinnyAI — Lean AI for Weak PCs
 
-A complete local AI stack designed for modest hardware (Intel i5, 8 GB RAM, no discrete GPU required). No cloud APIs, no costs, no subscriptions. Starts with a single command: `skinny`.
+**Skinny** because it runs on hardware everyone else ignores.  
+No fat GPU. No 32 GB RAM. No cloud. Just a regular PC doing real AI work.
+
+Built on top of **[cc-haha](https://github.com/NanmiCoder/cc-haha)** + Ollama.  
+Starts with a single command: `skinny`.
+
+> If your PC can't run the mainstream local AI stacks — this was made for you.
 
 ## How it works
 
@@ -89,7 +95,7 @@ Worst case with one model loaded: ~3 GB model + ~2.5 GB OS + ~200 MB stack = ~5.
 - [Ollama](https://ollama.ai)
 - [Bun](https://bun.sh)
 - [Git for Windows](https://git-scm.com/download/win)
-- [cc-haha](https://github.com/NanmiCoder/cc-haha) installed
+- **[cc-haha](https://github.com/NanmiCoder/cc-haha)** — the TUI interface SkinnyAI runs on top of
 
 ### Install
 
