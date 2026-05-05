@@ -58,7 +58,7 @@ for /f "tokens=5" %%p in ('netstat -ano 2^>nul ^| findstr ":4000 "') do (
     taskkill /PID %%p /F >nul 2>&1
 )
 echo [skinny] Starting proxy...
-start "skinny-proxy" /min cmd /c "bun "%ARCH_DIR%\proxy.ts" >"%TEMP%\skinny-proxy.log" 2>&1"
+start "skinny-proxy" /min powershell -WindowStyle Hidden -Command "$d='%ARCH_DIR%'; while($true){ bun $d\proxy.ts 2>>$env:TEMP\skinny-proxy.log; Start-Sleep 1 }"
 
 :wait_proxy
 curl -s http://localhost:4000/health >nul 2>&1
