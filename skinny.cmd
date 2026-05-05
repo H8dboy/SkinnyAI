@@ -74,7 +74,7 @@ echo [skinny] Proxy ready.
 echo [skinny] Loading model into RAM...
 curl -s -X POST http://localhost:11434/api/generate ^
   -H "Content-Type: application/json" ^
-  -d "{\"model\":\"qwen2.5-coder:1.5b\",\"prompt\":\"hi\",\"stream\":false,\"keep_alive\":-1,\"options\":{\"num_predict\":1}}" > nul
+  -d "{\"model\":\"qwen2.5-coder:1.5b\",\"prompt\":\"hi\",\"stream\":false,\"keep_alive\":-1,\"options\":{\"num_predict\":1,\"num_ctx\":512}}" > nul
 echo [skinny] Model ready.
 
 :: ── Launch cc-haha ────────────────────────────────────────────────────────────

@@ -62,10 +62,9 @@ function buildSuffix(stopped: boolean, allucined: boolean): string {
 //   ANTHROPIC_DEFAULT_OPUS_MODEL   → phi4-mini            (complex tasks)
 //
 // num_ctx is adapted per model: small model gets a larger window, phi4 stays conservative
-function resolveModel(requested: string): { model: string; numCtx: number } {
-  if (requested.includes("7b") || requested.includes("7B")) return { model: requested, numCtx: 3072 };
-  if (requested.includes("qwen")) return { model: requested, numCtx: 2048 };
-  return { model: requested || DEFAULT_MODEL, numCtx: 2048 };
+function resolveModel(requested: string, cluster: string): { model: string; numCtx: number } {
+  if (requested.includes("7b") || requested.includes("7B")) return { model: requested, numCtx: 2048 };
+  return { model: requested || DEFAULT_MODEL, numCtx: 512 };
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -318,7 +317,7 @@ Bun.serve({
         console.log(`[planner] ${taskPlan.type}`)
       }
 
-      const { model, numCtx } = resolveModel(body.model ?? DEFAULT_MODEL);
+      const { model, numCtx } = resolveModel(body.model ?? DEFAULT_MODEL, routedCluster);
       console.log(`[proxy] ${body.model ?? "?"} → ${model} (ctx=${numCtx})`);
 
       const oaiBody: Record<string, unknown> = {
