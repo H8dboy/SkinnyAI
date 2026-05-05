@@ -325,6 +325,7 @@ Bun.serve({
         temperature: body.temperature,
         top_p: body.top_p,
         options: { num_ctx: numCtx },
+        keep_alive: -1,
       };
       if (body.max_tokens)    oaiBody.max_tokens   = body.max_tokens;
       if (body.tools?.length) { oaiBody.tools = toOAITools(body.tools); oaiBody.tool_choice = "auto"; }
