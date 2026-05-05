@@ -70,8 +70,12 @@ goto wait_proxy
 :proxy_ready
 echo [skinny] Proxy ready.
 
-:: ── Pre-warm model in background (non-blocking) ───────────────────────────────
-start /b powershell -WindowStyle Hidden -Command "Invoke-RestMethod -Uri http://localhost:11434/api/generate -Method Post -ContentType application/json -Body '{\"model\":\"qwen2.5-coder:1.5b\",\"prompt\":\"hi\",\"stream\":false,\"keep_alive\":-1,\"options\":{\"num_predict\":1}}' -ErrorAction SilentlyContinue | Out-Null"
+:: ── Pre-warm: load model into RAM BEFORE opening cc-haha ─────────────────────
+echo [skinny] Loading model into RAM...
+curl -s -X POST http://localhost:11434/api/generate ^
+  -H "Content-Type: application/json" ^
+  -d "{\"model\":\"qwen2.5-coder:1.5b\",\"prompt\":\"hi\",\"stream\":false,\"keep_alive\":-1,\"options\":{\"num_predict\":1}}" > nul
+echo [skinny] Model ready.
 
 :: ── Launch cc-haha ────────────────────────────────────────────────────────────
 echo [skinny] Starting...

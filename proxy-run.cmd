@@ -1,5 +1,5 @@
 @echo off
 :loop
-bun "%~dp0proxy.ts" > "%TEMP%\skinny-proxy.log" 2>&1
+bun "%~dp0proxy.ts"
 timeout /t 1 /nobreak >nul
 goto loop
