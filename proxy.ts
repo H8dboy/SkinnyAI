@@ -9,6 +9,9 @@ import { inspect, type HistoryCtx } from "./inspector.ts";
 import { plan } from "./planner.ts";
 routerInit();
 
+process.on("unhandledRejection", (err) => console.error("[proxy] unhandled:", err));
+process.on("uncaughtException",  (err) => console.error("[proxy] exception:", err));
+
 const OLLAMA_BASE   = "http://localhost:11434/v1";
 const PORT          = 4000;
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL ?? "phi4-mini";

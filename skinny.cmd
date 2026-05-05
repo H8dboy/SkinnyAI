@@ -58,11 +58,12 @@ for /f "tokens=5" %%p in ('netstat -ano 2^>nul ^| findstr ":4000 "') do (
     taskkill /PID %%p /F >nul 2>&1
 )
 echo [skinny] Starting proxy...
-start "skinny-proxy" /min powershell -WindowStyle Hidden -Command "$d='%ARCH_DIR%'; while($true){ bun $d\proxy.ts 2>>$env:TEMP\skinny-proxy.log; Start-Sleep 1 }"
+start "skinny-proxy" /min cmd /c "bun "%ARCH_DIR%\proxy.ts" >> "%TEMP%\skinny-proxy.log" 2>&1"
 
 :wait_proxy
 curl -s http://localhost:4000/health >nul 2>&1
 if errorlevel 1 ( timeout /t 1 /nobreak >nul & goto wait_proxy )
+echo [skinny] Proxy ready.
 
 :: ── Pre-warm qwen2.5-coder:1.5b in background (non-blocking) ────────────────
 start /b powershell -WindowStyle Hidden -Command "Invoke-RestMethod -Uri http://localhost:11434/api/generate -Method Post -ContentType application/json -Body '{\"model\":\"qwen2.5-coder:1.5b\",\"prompt\":\"hi\",\"stream\":false,\"keep_alive\":-1,\"options\":{\"num_predict\":1}}' -ErrorAction SilentlyContinue | Out-Null"
