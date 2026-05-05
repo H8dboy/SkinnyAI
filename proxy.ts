@@ -59,8 +59,8 @@ function buildSuffix(stopped: boolean, allucined: boolean): string {
 //
 // num_ctx is adapted per model: small model gets a larger window, phi4 stays conservative
 function resolveModel(requested: string): { model: string; numCtx: number } {
-  if (requested.includes("qwen")) return { model: requested, numCtx: 8192 };
-  return { model: requested || DEFAULT_MODEL, numCtx: 4096 };
+  if (requested.includes("qwen")) return { model: requested, numCtx: 6144 };
+  return { model: requested || DEFAULT_MODEL, numCtx: 2048 };
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
