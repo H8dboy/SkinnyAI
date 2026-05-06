@@ -5,7 +5,7 @@
  */
 
 import { init as routerInit, route, isReady as routerReady } from "./nano-router.ts";
-import { inspect, type HistoryCtx } from "./inspector.ts";
+import { inspect, cortexProcess, type HistoryCtx } from "./inspector.ts";
 import { plan } from "./planner.ts";
 routerInit();
 
@@ -14,7 +14,7 @@ process.on("uncaughtException",  (err) => console.error("[proxy] exception:", er
 
 const OLLAMA_BASE   = "http://localhost:11434/v1";
 const PORT          = 4000;
-const DEFAULT_MODEL = process.env.OLLAMA_MODEL ?? "qwen2.5-coder:1.5b";
+const DEFAULT_MODEL = process.env.OLLAMA_MODEL ?? "qwen2.5-coder:7b-instruct-q4_K_M";
 
 // ── Nano-router helper ────────────────────────────────────────────────────────
 
@@ -57,13 +57,14 @@ function buildSuffix(stopped: boolean, allucined: boolean): string {
 }
 
 // Model tiers (set in .env, picked by cc-haha per task type):
-//   ANTHROPIC_DEFAULT_HAIKU_MODEL  → smollm2:135m         (trivial: greetings, one-liners)
-//   ANTHROPIC_DEFAULT_SONNET_MODEL → qwen2.5-coder:1.5b   (main agent, coding, reasoning)
-//   ANTHROPIC_DEFAULT_OPUS_MODEL   → qwen2.5-coder:1.5b   (complex tasks)
+//   ANTHROPIC_DEFAULT_HAIKU_MODEL  → qwen2.5-coder:0.5b              (trivial)
+//   ANTHROPIC_DEFAULT_SONNET_MODEL → qwen2.5-coder:7b-instruct-q4_K_M (coding, tool use)
+//   ANTHROPIC_DEFAULT_OPUS_MODEL   → gemma4:e4b                        (complex tasks, tool use)
 // num_ctx must match pre-warm values in skinny.cmd to avoid Ollama model reload
 function resolveModel(requested: string, cluster: string): { model: string; numCtx: number } {
-  if (requested.includes("135m") || requested.includes("smollm")) return { model: requested, numCtx: 256 };
-  return { model: requested || DEFAULT_MODEL, numCtx: 512 };
+  if (requested.includes("0.5b")) return { model: requested || DEFAULT_MODEL, numCtx: 2048 };
+  if (requested.includes("7b"))   return { model: requested || DEFAULT_MODEL, numCtx: 8192 };
+  return { model: requested || DEFAULT_MODEL, numCtx: 4096 };
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -274,53 +275,33 @@ Bun.serve({
       try { body = (await req.json()) as AnthropicRequest; }
       catch { return Response.json({ error: "Invalid JSON" }, { status: 400 }); }
 
-      // ── Nano-router + Inspector setup ─────────────────────────────────────────
-      const lastUserText   = extractLastUserText(body.messages);
-      const msgHistory     = buildHistory(body.messages);
-      let   routedCluster  = "trivial";
+      // ── Cortex: compress request and pick dormant model to wake ──────────────
+      const lastUserText  = extractLastUserText(body.messages);
+      const msgHistory    = buildHistory(body.messages);
 
+      const { req: cortexBody, result: cortex } = await cortexProcess(body as Parameters<typeof cortexProcess>[0]);
+      Object.assign(body, cortexBody);
+      const routedCluster = cortex.level === "active" ? "coding" : cortex.level === "light" ? "coding" : "trivial";
+      console.log(`[cortex] ${cortex.level} → ${cortex.model} (${cortex.reason})`);
+
+      // ── Nano-router: inject scaffold on top of cortex system prompt ───────────
       if (routerReady()) {
-        const { model: nanoModel, scaffold, cluster } = route(lastUserText);
-
-        if (nanoModel) { body.model = nanoModel; routedCluster = cluster; }
-
-        if (scaffold) {
-          if (!body.system) {
-            body.system = scaffold;
-          } else if (typeof body.system === "string") {
-            body.system = scaffold + "\n\n" + body.system;
-          } else {
-            const first = body.system.find(b => b.type === "text");
-            if (first) first.text = scaffold + "\n\n" + first.text;
-            else body.system.unshift({ type: "text", text: scaffold });
-          }
+        const { scaffold } = route(lastUserText);
+        if (scaffold && body.system && typeof body.system === "string") {
+          body.system = scaffold + "\n\n" + body.system;
         }
       }
 
-      // smollm2 (135m) can't handle tool calls — upgrade to coding tier
-      if (body.tools?.length && (body.model ?? "").match(/smollm|135m/)) {
-        body.model = "qwen2.5-coder:0.5b";
-        routedCluster = "coding";
-      }
-
-      // ── Task planner: append step-by-step scaffold to system prompt ───────────
+      // ── Task planner ──────────────────────────────────────────────────────────
       const taskPlan = plan(lastUserText, routedCluster, Boolean(body.tools?.length))
       if (taskPlan) {
-        const ps = "\n\n" + taskPlan.scaffold
-        if (!body.system) {
-          body.system = taskPlan.scaffold
-        } else if (typeof body.system === "string") {
-          body.system += ps
-        } else {
-          const last = [...body.system].reverse().find(b => b.type === "text")
-          if (last) last.text += ps
-          else body.system.push({ type: "text", text: taskPlan.scaffold })
-        }
+        if (typeof body.system === "string") body.system += "\n\n" + taskPlan.scaffold;
         console.log(`[planner] ${taskPlan.type}`)
       }
 
-      const { model, numCtx } = resolveModel(body.model ?? DEFAULT_MODEL, routedCluster);
-      console.log(`[proxy] ${body.model ?? "?"} → ${model} (ctx=${numCtx})`);
+      const model  = cortex.model;
+      const numCtx = cortex.numCtx;
+      console.log(`[proxy] → ${model} ctx=${numCtx}`);
 
       const oaiBody: Record<string, unknown> = {
         model,
@@ -331,14 +312,23 @@ Bun.serve({
         options: { num_ctx: numCtx },
         keep_alive: -1,
       };
-      oaiBody.max_tokens = Math.max(body.max_tokens ?? 0, 512);
+      oaiBody.max_tokens = body.max_tokens ?? 1024;
       if (body.tools?.length) { oaiBody.tools = toOAITools(body.tools); oaiBody.tool_choice = "auto"; }
 
-      const upstream = await fetch(`${OLLAMA_BASE}/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(oaiBody),
-      });
+      let upstream: Response;
+      try {
+        console.log(`[proxy] fetching ${OLLAMA_BASE}/chat/completions model=${model}`);
+        upstream = await fetch(`${OLLAMA_BASE}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(oaiBody),
+          signal: AbortSignal.timeout(300_000),
+        });
+        console.log(`[proxy] upstream status=${upstream.status}`);
+      } catch (fetchErr) {
+        console.error("[proxy] fetch failed:", fetchErr);
+        return Response.json({ error: String(fetchErr) }, { status: 502 });
+      }
 
       if (!upstream.ok) {
         const err = await upstream.text();

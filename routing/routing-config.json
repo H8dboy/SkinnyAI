@@ -3,26 +3,26 @@
     {
       "id": 0,
       "label": "trivial",
-      "model": "smollm2:135m",
+      "model": "qwen2.5-coder:0.5b",
       "scaffold": "Answer in one sentence. Be direct."
     },
     {
       "id": 1,
       "label": "coding",
-      "model": "qwen2.5-coder:0.5b",
+      "model": "qwen2.5-coder:7b-instruct-q4_K_M",
       "scaffold": "[coding] Working code only. No preamble. Code block then brief explanation."
     },
     {
       "id": 2,
       "label": "reasoning",
-      "model": "qwen2.5-coder:1.5b",
+      "model": "gemma4:e4b",
       "scaffold": "[reasoning] Think step by step. Be precise and concise."
     }
   ],
   "models": [
-    "smollm2:135m",
     "qwen2.5-coder:0.5b",
-    "qwen2.5-coder:1.5b"
+    "qwen2.5-coder:7b-instruct-q4_K_M",
+    "gemma4:e4b"
   ],
-  "built": "2026-05-05T09:00:00.000Z"
+  "built": "2026-05-06T00:00:00.000Z"
 }

@@ -1,6 +1,6 @@
 @echo off
 :: ============================================================
-:: skinny — local AI (qwen2.5-coder:1.5b + moondream on-demand)
+:: skinny — local AI (qwen2.5-coder:0.5b + qwen2.5-coder:7b + gemma4:e4b)
 :: Usage: skinny              -> interactive session
 ::        skinny -p "prompt"  -> headless mode
 :: ============================================================
@@ -28,10 +28,10 @@ set "ENV_FILE=%CCHAHA_DIR%\.env"
 >> "%ENV_FILE%" echo API_TIMEOUT_MS=3000000
 >> "%ENV_FILE%" echo DISABLE_TELEMETRY=1
 >> "%ENV_FILE%" echo CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
->> "%ENV_FILE%" echo ANTHROPIC_MODEL=qwen2.5-coder:0.5b
->> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_SONNET_MODEL=qwen2.5-coder:1.5b
->> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_HAIKU_MODEL=smollm2:135m
->> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_OPUS_MODEL=qwen2.5-coder:1.5b
+>> "%ENV_FILE%" echo ANTHROPIC_MODEL=qwen2.5-coder:7b-instruct-q4_K_M
+>> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_SONNET_MODEL=qwen2.5-coder:7b-instruct-q4_K_M
+>> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen2.5-coder:0.5b
+>> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_OPUS_MODEL=gemma4:e4b
 
 :: ── Write .mcp.json ───────────────────────────────────────────────────────────
 set "MCP_FILE=%CCHAHA_DIR%\.mcp.json"
@@ -53,12 +53,30 @@ set "VISION_JSON=%VISION_PATH:\=/%"
 >> "%MCP_FILE%" echo   }
 >> "%MCP_FILE%" echo }
 
-:: ── Kill old proxy, start fresh ───────────────────────────────────────────────
+:: ── Kill old proxy ────────────────────────────────────────────────────────────
 for /f "tokens=5" %%p in ('netstat -ano 2^>nul ^| findstr ":4000 "') do (
     taskkill /PID %%p /F >nul 2>&1
 )
 
-set "OLLAMA_MODEL=qwen2.5-coder:1.5b"
+:: ── Restart ollama with Vulkan GPU ────────────────────────────────────────────
+echo [skinny] Restarting ollama with Vulkan GPU...
+taskkill /IM ollama.exe /F >nul 2>&1
+timeout /t 3 /nobreak >nul
+
+:: Vulkan DEVE essere passato via bash — PowerShell non eredita le env var al processo figlio
+set "OLLAMA_MODEL=qwen2.5-coder:7b-instruct-q4_K_M"
+bash -c "OLLAMA_VULKAN=1 OLLAMA_MAX_LOADED_MODELS=1 OLLAMA_NUM_PARALLEL=1 OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve > '%ARCH_DIR%/ollama-vulkan.log' 2>&1 &"
+
+:wait_ollama
+curl -s http://localhost:11434/api/version >nul 2>&1
+if not errorlevel 1 goto ollama_ready
+timeout /t 1 /nobreak >nul
+goto wait_ollama
+
+:ollama_ready
+echo [skinny] Ollama ready (Vulkan GPU).
+
+:: ── Start proxy ───────────────────────────────────────────────────────────────
 echo [skinny] Starting proxy...
 start "skinny-proxy" /min "%ARCH_DIR%\proxy-run.cmd"
 
@@ -71,12 +89,10 @@ goto wait_proxy
 :proxy_ready
 echo [skinny] Proxy ready.
 
-:: ── Pre-warm all 3 models into RAM with correct ctx ──────────────────────────
-echo [skinny] Loading models into RAM...
-curl -s -X POST http://localhost:11434/api/generate -H "Content-Type: application/json" -d "{\"model\":\"smollm2:135m\",\"prompt\":\"hi\",\"stream\":false,\"keep_alive\":-1,\"options\":{\"num_predict\":1,\"num_ctx\":256}}" > nul
-curl -s -X POST http://localhost:11434/api/generate -H "Content-Type: application/json" -d "{\"model\":\"qwen2.5-coder:0.5b\",\"prompt\":\"hi\",\"stream\":false,\"keep_alive\":-1,\"options\":{\"num_predict\":1,\"num_ctx\":512}}" > nul
-curl -s -X POST http://localhost:11434/api/generate -H "Content-Type: application/json" -d "{\"model\":\"qwen2.5-coder:1.5b\",\"prompt\":\"hi\",\"stream\":false,\"keep_alive\":-1,\"options\":{\"num_predict\":1,\"num_ctx\":512}}" > nul
-echo [skinny] Models ready.
+:: ── Pre-warm gemma4:e4b (42/43 layer su AMD Vulkan → 5 tok/s) ────────────────
+echo [skinny] Loading gemma4 into GPU (Vulkan, 42 layers AMD)...
+curl -s -X POST http://localhost:11434/api/generate -H "Content-Type: application/json" -d "{\"model\":\"gemma4:e4b\",\"prompt\":\"hi\",\"stream\":false,\"keep_alive\":-1,\"options\":{\"num_predict\":1,\"num_ctx\":2048}}" > nul
+echo [skinny] gemma4 ready (5 tok/s Vulkan GPU).
 
 :: ── Launch cc-haha ────────────────────────────────────────────────────────────
 echo [skinny] Starting...

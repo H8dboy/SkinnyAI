@@ -2,3 +2,10 @@
 node_modules/
 *.png
 *.jpg
+*.log
+*.bin
+.claude/
+ollama-*.log
+proxy-*.log
+ollama-debug.txt
+ollama-out.txt

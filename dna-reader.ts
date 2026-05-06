@@ -207,26 +207,27 @@ const CLUSTERS = [
   {
     id:       0,
     label:    "trivial",
-    model:    "qwen2.5-coder:1.5b",
+    model:    "qwen2.5-coder:0.5b",
     scaffold: "Answer directly and concisely. No preamble.",
   },
   {
     id:       1,
     label:    "coding",
-    model:    "phi4-mini",
+    model:    "qwen2.5-coder:7b-instruct-q4_K_M",
     scaffold: "[coding] Provide working, correct code. No introductory sentences. Structure: brief analysis → solution → code block.",
   },
   {
     id:       2,
     label:    "reasoning",
-    model:    "phi4-mini",
+    model:    "gemma4:e4b",
     scaffold: "[reasoning] Think step by step. Be precise and concise. No repetition.",
   },
 ]
 
 const STACK_MODELS = [
-  { id: "phi4-mini",          ollama: "phi4-mini" },
-  { id: "qwen2.5-coder:1.5b", ollama: "qwen2.5-coder:1.5b" },
+  { id: "qwen2.5-coder:0.5b",              ollama: "qwen2.5-coder:0.5b" },
+  { id: "qwen2.5-coder:7b-instruct-q4_K_M", ollama: "qwen2.5-coder:7b-instruct-q4_K_M" },
+  { id: "gemma4:e4b",                       ollama: "gemma4:e4b" },
 ]
 
 // ── Main ──────────────────────────────────────────────────────────────────────

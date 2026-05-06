@@ -5,7 +5,7 @@
  * Routing a tre livelli (dal più specifico al più generico):
  *   1. Phrase patterns (regex, peso 3) — cattura "perché il mio codice non va"
  *   2. Token set (parole singole EN+IT, peso 1) — cattura keyword esplicite
- *   3. Fallback: trivial → smollm2:135m
+ *   3. Fallback: trivial → qwen2.5-coder:0.5b
  */
 
 import { readFileSync, existsSync } from "fs"
@@ -208,7 +208,7 @@ export function route(query: string): { model: string | null; scaffold: string; 
   const wordCount = trimmed.split(/\s+/).length
   const trivial   = config.clusters[0]
 
-  // Short / trivial queries → always smollm2:135m (fastest)
+  // Short / trivial queries → always qwen2.5-coder:0.5b (fastest)
   if (wordCount <= 3) {
     const isAllTrivial = trimmed.toLowerCase().split(/\s+/).every(w => TRIVIAL_WORDS.has(w))
     if (isAllTrivial || wordCount === 1)

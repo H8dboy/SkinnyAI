@@ -1,195 +1,232 @@
-# SkinnyAI — Lean AI for Weak PCs
+# SkinnyAI — Claude Code su PC con 8 GB di RAM
 
-**Skinny** because it runs on hardware everyone else ignores.  
-No fat GPU. No 32 GB RAM. No cloud. Just a regular PC doing real AI work.
+**SkinnyAI** fa girare Claude Code (la CLI ufficiale di Anthropic) su hardware modesto usando modelli locali quantizzati via Ollama — senza cloud, senza GPU da gaming, senza 32 GB di RAM.
 
 Built on top of **[cc-haha](https://github.com/NanmiCoder/cc-haha)** + Ollama.  
-Starts with a single command: `skinny`.
+Si avvia con un solo comando: `skinny`.
 
-> If your PC can't run the mainstream local AI stacks — this was made for you.
+> Testato su Intel i5-8265U, 8 GB RAM, AMD Radeon Pro WX3200 4 GB.  
+> Se il tuo PC è considerato "troppo debole" per l'AI locale — questo progetto è nato per te.
 
-## How it works
+---
+
+## Come funziona
 
 ```
-terminal
+terminale
    │
    ▼
- skinny  ◄── single command, starts everything automatically
+ skinny  ◄── un comando, avvia tutto automaticamente
    │
-   ├── [1st run] dna-reader    reads model weights offline → builds routing map
+   ├── ollama serve  (avviato con OLLAMA_VULKAN=1 via bash)
+   │       └── gemma4:e4b → 42/43 layer su AMD GPU via Vulkan → ~5 tok/s
    │
-   ├── proxy (background)      Anthropic API → Ollama bridge
+   ├── proxy (background, porta 4000)
    │       │
-   │       ├── nano-router     routes each query in < 1ms (no AI activated)
-   │       │     reads model DNA → decides: trivial→qwen / coding→phi4 / reasoning→phi4
-   │       │     injects a scaffold so the model answers directly, no preamble
+   │       ├── cortex (pre-processing, < 2ms, senza AI)
+   │       │     ├── parseProtocol()   strip tag interni di Claude Code
+   │       │     ├── regexClassify()   classifica query: trivial/read/write/exec/agent
+   │       │     ├── selectTools()     filtra tool per livello di attivazione
+   │       │     └── buildSystem()     comprime system prompt 8000→20 token
    │       │
-   │       └── inspector       post-generation quality control (< 2ms, no AI)
-   │             strips filler · truncates repetition · checks relevance
-   │             appends -stopped if response is incomplete
-   │             appends -allucined if hallucination patterns detected
+   │       ├── nano-router   inietta scaffold di risposta (< 1ms)
+   │       ├── planner       piano task per query complesse (< 1ms)
+   │       └── inspector     quality control post-generazione (< 2ms)
    │
-   ├── screen-watcher (background)  screenshot every 90s → memory file
-   │
-   └── cc-haha (foreground)    TUI interface + MCP tools
-           │
-           ├── HAIKU  fast tasks    ──► qwen2.5-coder:1.5b  (~1 GB)
-           ├── SONNET main agent   ──► phi4-mini             (~2.5 GB)
-           ├── OPUS   complex tasks ──► phi4-mini            (~2.5 GB)
-           │
-           └── MCP tools
-               ├── fetch   → internet (reads any URL)
-               └── vision  → see_screen / read_screen_memory
-                       │
-                       └── moondream  (~1.7 GB, on-demand only)
+   └── cc-haha (foreground — interfaccia TUI di Claude Code)
+           ├── HAIKU  → qwen2.5-coder:7b  (query triviali)
+           ├── SONNET → gemma4:e4b         (coding, spiegazioni)
+           └── OPUS   → gemma4:e4b         (agent, tool use, ragionamento)
 ```
 
-**moondream** loads only when you ask to look at the screen — zero RAM usage otherwise.  
-**The three Ollama models never load simultaneously** (`OLLAMA_MAX_LOADED_MODELS=1`).
+---
 
-## Intelligence layer
+## La scoperta chiave: Vulkan + gemma4
 
-### DNA Reader (`dna-reader.ts`)
-Runs once at first launch. Opens the GGUF model files as raw binary data — no model activation, no inference. Reads the tokenizer vocabulary embedded in the metadata, classifies every token into semantic clusters (trivial / coding / reasoning), and writes a compact routing map to disk (~200 KB total).
+gemma4:e4b nasce per girare su dispositivi edge (telefoni, tablet con NPU).  
+Su Windows con AMD, Ollama usa **Vulkan** per offloadare i layer alla GPU:
 
-### Nano Router (`nano-router.ts`)
-Loaded into RAM at proxy startup and never reloaded. Routes each incoming query in < 1ms using two levels:
-- **Phrase patterns** (weighted 3–4×): regex that catch natural-language queries like *"why doesn't my code work"* or *"explain the difference between"*
-- **Token lookup** (weighted 1×): exact match against domain-specific word sets (English + Italian)
+```
+gemma4:e4b (10 GB totali)
+  ├── 42/43 layer → AMD Radeon Pro WX3200 (Vulkan)  ← veloci
+  └──  1/43 layer → CPU                              ← solo output layer
+```
 
-No second AI is spawned. No network call. Pure math on pre-computed data.
+Risultato: **5.1 tok/s** invece di 2.1 tok/s su CPU pura.  
+**Vulkan deve essere attivato esplicitamente** — l'aggiornamento automatico di Ollama lo resetta.  
+`skinny.cmd` lo avvia sempre correttamente via bash.
 
-### Inspector (`inspector.ts`)
-Runs on the complete response before it reaches the user. Pure text analysis, < 2ms.
+---
 
-| Check | Action |
-|---|---|
-| Filler phrases ("I hope this helps", "Certainly!", …) | Stripped silently |
-| Repetitive / oversized response | Truncated at last clean sentence boundary |
-| Response relevance < 25% of query terms | Appends `-allucined` |
-| Hallucination patterns (self-reference, invented URLs, contradictions) | Appends `-allucined` |
-| Unclosed code block / truncated sentence / missing code / multi-part gap | Appends `-stopped` |
+## Stack modelli
 
-The inspector is cross-turn aware: it reads the conversation history to validate claims like *"as I mentioned earlier"*.
+| Modello | Dimensione | Velocità | Uso |
+|---------|-----------|---------|-----|
+| **gemma4:e4b** | 10 GB (Q4_K_M, 8B param) | ~5 tok/s GPU | coding, agent, reasoning |
+| **qwen2.5-coder:7b** | 4.7 GB (Q4_K_M) | ~3 tok/s split | fallback query triviali |
+| **nomic-embed-text** | 274 MB | — | vector memory (opzionale) |
+| **moondream** | 1.7 GB | — | vision MCP (on-demand) |
 
-## Stack
+> **Perché gemma4 è più veloce del 7b su questo hardware?**  
+> Il 7b (4.7 GB) supera i 4 GB di VRAM → split GPU+CPU → bottleneck.  
+> gemma4 (10 GB) con Vulkan mette 42/43 layer nella VRAM AMD dedicata  
+> (usando anche la shared memory dell'Intel UHD 620) → quasi tutto su GPU.
 
-| Component | Role | RAM |
-|---|---|---|
-| **phi4-mini** | Main agent — coding, reasoning, tool use | ~2.5 GB |
-| **qwen2.5-coder:1.5b** | Fast tasks — summaries, simple questions | ~1.0 GB |
-| **moondream** | Vision — sees the desktop on demand | ~1.7 GB |
-| **dna-reader.ts** | One-time model DNA analysis → routing map | 0 at runtime |
-| **nano-router.ts** | Sub-millisecond query routing + scaffold injection | ~2 MB RAM |
-| **inspector.ts** | Post-generation quality control | ~0 MB RAM |
-| **proxy.ts** | Anthropic→Ollama bridge | ~30 MB |
-| **screen-watcher.ts** | Passive screen observation → memory file | ~30 MB |
-| **vision-mcp.ts** | MCP server for active vision | ~20 MB |
-| **cc-haha** | TUI interface + MCP + multi-agent | ~150 MB |
+---
 
-Worst case with one model loaded: ~3 GB model + ~2.5 GB OS + ~200 MB stack = ~5.7 GB out of 8 GB.
+## Cortex — il cervello del proxy
 
-## Setup (one time)
+Il sistema più importante è il **cortex** (dentro `inspector.ts`).  
+Intercetta ogni richiesta di Claude Code *prima* che arrivi al modello:
 
-### Prerequisites
-- [Ollama](https://ollama.ai)
+### 1. Tag Registry — protocollo interno di Claude Code
+Claude Code inietta tag speciali nei messaggi (`<system-reminder>`, `<function_calls>`, `<function_results>`, ecc.).  
+I modelli locali non sono stati addestrati su questi tag e li interpretano male.  
+Il cortex li riconosce, li rimuove o li converte in testo piano prima della classificazione.
+
+### 2. Classificazione query (regex, < 1ms)
+```
+trivial  → "ciao", "ok", "grazie"          → dormant → 7b
+read     → "spiega", "cerca", "mostra"     → light   → gemma4
+write    → "scrivi", "crea", "modifica"    → light   → gemma4
+exec     → "esegui", "installa", "testa"   → light   → gemma4
+agent    → "pianifica", "multi-step"       → active  → gemma4
+```
+
+### 3. Compressione system prompt
+Claude Code invia ~8000 token di system prompt (descrizione di tutti i tool, istruzioni, ecc.).  
+Il cortex lo comprime drasticamente per livello:
+
+| Livello | System prompt | Tool |
+|---------|--------------|------|
+| dormant | 8 token | nessuno |
+| light   | 20 token | solo search/web |
+| active  | primi 900 char dell'originale | tutti (compressi) |
+
+### 4. CC_TOOLS Registry
+Mappa tutti i tool nativi di Claude Code (`Read`, `Edit`, `Bash`, `Agent`, ecc.) al livello minimo di attivazione necessario:
+- `Read`, `Glob`, `Grep` → light (basta il 7b)
+- `Edit`, `Write`, `Bash` → active (serve gemma4)
+- `Agent`, `TaskCreate` → active
+
+---
+
+## Inspector — quality control post-generazione
+
+Dopo che il modello risponde, l'inspector analizza il testo (< 2ms, nessuna AI):
+
+| Controllo | Azione |
+|-----------|--------|
+| Filler phrases ("I hope this helps", "Certainly!") | Rimossi silenziosamente |
+| Risposta ripetitiva | Troncata all'ultimo confine pulito |
+| Rilevanza < 25% dei termini della query | Appende `-allucined` |
+| Blocco codice non chiuso / frase troncata | Appende `-stopped` |
+
+---
+
+## Hardware testato e performance
+
+```
+CPU:  Intel Core i5-8265U @ 1.60GHz (4C/8T) — 2018
+RAM:  8 GB DDR4
+GPU:  AMD Radeon Pro WX3200 4GB VRAM (Vulkan)
+OS:   Windows 11 Pro
+```
+
+| Query | Modello | Tempo |
+|-------|---------|-------|
+| "ciao" | qwen2.5-coder:7b | ~12s |
+| "scrivi fibonacci in Python" (80 tok) | gemma4:e4b | ~15s |
+| Tool use (Read + Edit) | gemma4:e4b | ~30-60s |
+
+*I tempi includono prompt evaluation. Per query successive (modello già caricato) è più veloce.*
+
+---
+
+## Setup
+
+### Prerequisiti
+- [Ollama](https://ollama.ai) (≥ 0.23.1)
 - [Bun](https://bun.sh)
-- [Git for Windows](https://git-scm.com/download/win)
-- **[cc-haha](https://github.com/NanmiCoder/cc-haha)** — the TUI interface SkinnyAI runs on top of
+- [Git for Windows](https://git-scm.com/download/win) (include bash.exe)
+- **[cc-haha](https://github.com/NanmiCoder/cc-haha)** — interfaccia TUI Claude Code
 
-### Install
+### Installazione
 
 ```powershell
-# 1. Clone this repo next to cc-haha-main
+# 1. Clona questo repo
 git clone https://github.com/H8dboy/SkinnyAI
 cd SkinnyAI
 
-# 2. Run setup (adds `skinny` to PATH, downloads models, configures Ollama)
-powershell -ExecutionPolicy Bypass -File .\setup.ps1
+# 2. Scarica i modelli
+ollama pull gemma4:e4b
+ollama pull qwen2.5-coder:7b-instruct-q4_K_M
+ollama pull moondream
 
-# 3. Copy env config to cc-haha
-copy .env.example ..\cc-haha-main\.env
+# 3. Imposta la variabile per cc-haha
+set CCHAHA_DIR=C:\path\to\cc-haha-main
 
-# 4. Open a new terminal and type:
+# 4. Avvia
 skinny
 ```
 
-On first run, `skinny` automatically reads the model DNA and builds the routing map (takes ~1–2 min, runs once only). Every subsequent start is instant.
+### Prima esecuzione
+Al primo avvio, `skinny`:
+1. Termina eventuali processi ollama esistenti
+2. Avvia `ollama serve` con `OLLAMA_VULKAN=1` (via bash — necessario per ereditarietà env var)
+3. Attende che ollama sia pronto
+4. Pre-carica gemma4 in GPU (42 layer su AMD, ~60s la prima volta)
+5. Avvia il proxy sulla porta 4000
+6. Lancia cc-haha
 
-If cc-haha is in a different path:
+### Variabile d'ambiente obbligatoria
 ```powershell
+# In PowerShell (permanente):
+[Environment]::SetEnvironmentVariable("CCHAHA_DIR", "C:\path\to\cc-haha-main", "User")
+
+# O al volo:
 set CCHAHA_DIR=C:\path\to\cc-haha-main
 skinny
 ```
 
-## What you can ask
+---
 
-```
-# Look at the screen
-"look at my screen and tell me what you see"
-"I have an error, can you see it?"
+## File
 
-# Work context
-"what was I working on before?"
-"summarize my last few hours of work"
-
-# Coding (routed to phi4-mini with coding scaffold)
-"write a function that reads a CSV file"
-"why doesn't my code work?"
-"find the bug in this code"
-
-# Reasoning (routed to phi4-mini with reasoning scaffold)
-"explain the difference between TCP and UDP"
-"what's the best approach for this architecture?"
-
-# Fast tasks (routed to qwen — faster response)
-"translate this sentence"
-"briefly explain what a mutex is"
-"what time is it in Tokyo?"
-
-# Web search (fetch MCP)
-"find the Bun.serve documentation"
-"what's new in phi-4?"
-```
-
-## Response quality flags
-
-The inspector appends flags at the end of the response when needed:
-
-| Flag | Meaning |
-|---|---|
-| `-stopped` | Response is incomplete — the model ran out of tokens or the answer is cut off |
-| `-allucined` | Response may be inaccurate — hallucination patterns detected |
-| `-stopped -allucined` | Both apply |
-
-## Memory
-
-Screen observations are saved to:
-```
-%USERPROFILE%\.claude\screen-memory\observations.md
-```
-
-The file is automatically trimmed above 400 KB. The `read_screen_memory` MCP tool lets the agent read recent observations without taking a new screenshot.
-
-## Files
-
-| File | Description |
-|---|---|
-| `skinny.cmd` | Main entry point — starts everything |
-| `dna-reader.ts` | One-time model DNA analysis → `routing/` map |
-| `nano-router.ts` | Sub-millisecond query router + scaffold injector |
-| `inspector.ts` | Post-generation quality control |
-| `proxy.ts` | Anthropic→Ollama bridge |
-| `screen-watcher.ts` | Passive screen observer |
+| File | Descrizione |
+|------|-------------|
+| `skinny.cmd` | Entry point — avvia tutto |
+| `proxy.ts` | Bridge Anthropic API → Ollama (porta 4000) |
+| `inspector.ts` | Cortex (pre-processing) + Inspector (post-processing) |
+| `nano-router.ts` | Router sub-millisecondo + injection scaffold |
+| `planner.ts` | Generatore piani task per query complesse |
+| `dna-reader.ts` | Analisi offline pesi modello → mappa routing |
+| `proxy-run.cmd` | Loop di restart proxy |
 | `vision-mcp.ts` | MCP server: see_screen, read_screen_memory |
-| `setup.ps1` | One-time setup |
-| `.env.example` | cc-haha configuration template |
+| `fetch-mcp.ts` | MCP server: fetch URL |
+| `screen-watcher.ts` | Osservatore schermo passivo → file memoria |
+| `vector-memory.ts` | Memoria vettoriale (opzionale, richiede nomic-embed-text) |
+| `routing/routing-config.json` | Config cluster nano-router |
 
-## Tested hardware
+---
 
-```
-CPU:  Intel Core i5-8265U @ 1.60GHz (4C/8T)
-RAM:  8 GB DDR4
-GPU:  AMD Radeon Pro WX3200 4GB — Ollama runs on CPU
-OS:   Windows 11 Pro
-```
+## Perché non usare direttamente Ollama?
+
+Claude Code è progettato per girare con i modelli Anthropic (Haiku/Sonnet/Opus) che hanno:
+- System prompt di 8000+ token
+- Tool use strutturato con JSON schema
+- Tag di protocollo interni (`<function_calls>`, `<system-reminder>`, ecc.)
+
+I modelli locali non reggono tutto questo. SkinnyAI fa da traduttore:
+comprime, filtra, adatta ogni richiesta al modello locale disponibile,
+e restituisce risposte nel formato che Claude Code si aspetta.
+
+---
+
+## Contribuire
+
+PR benvenute. Se hai hardware simile (4-8 GB VRAM, < 16 GB RAM) e vuoi testare:
+apri una issue con le tue specifiche e i tempi misurati.
+
+L'obiettivo è costruire un reference stack che funzioni su hardware del 2018-2020
+senza sacrificare le funzionalità di Claude Code.
