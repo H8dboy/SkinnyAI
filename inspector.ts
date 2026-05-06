@@ -198,13 +198,14 @@ const CC_TOOLS: Record<string, ToolSpec> = {
 // SEZIONE 4 — PRE-PROCESSING (ex cortex.ts)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// gemma4:e4b con Vulkan: 42/43 layer su GPU AMD → 5.1 tok/s (più veloce del 7b split).
-// 7b (Q4, 4.7GB) supera i 4GB VRAM → parte su CPU → 3 tok/s.
-// Architettura: gemma4 per tutto, 7b solo se gemma4 non disponibile.
+// gemma4:e4b con Vulkan: 42/43 layer su GPU AMD → 5.1 tok/s.
+// 7b (Q4, 4.7GB) supera i 4GB VRAM → split GPU+CPU → 3 tok/s + reload time.
+// Con OLLAMA_MAX_LOADED_MODELS=1, switchare 7b↔gemma4 costa 40-60s di reload.
+// Soluzione: un solo modello per tutti i livelli — gemma4 già caldo non va mai evicto.
 const MODELS: Record<Level, string> = {
-  dormant: "qwen2.5-coder:7b-instruct-q4_K_M", // 7b per saluti/conferme rapide
-  light:   "gemma4:e4b",                        // gemma4: 5 tok/s su Vulkan
-  active:  "gemma4:e4b",                        // gemma4: tools + thinking
+  dormant: "gemma4:e4b",
+  light:   "gemma4:e4b",
+  active:  "gemma4:e4b",
 }
 const CTX: Record<Level, number> = { dormant: 2048, light: 2048, active: 2048 }
 

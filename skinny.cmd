@@ -1,6 +1,6 @@
 @echo off
 :: ============================================================
-:: skinny — local AI (qwen2.5-coder:0.5b + qwen2.5-coder:7b + gemma4:e4b)
+:: skinny — local AI (gemma4:e4b via Ollama Vulkan)
 :: Usage: skinny              -> interactive session
 ::        skinny -p "prompt"  -> headless mode
 :: ============================================================
@@ -28,9 +28,9 @@ set "ENV_FILE=%CCHAHA_DIR%\.env"
 >> "%ENV_FILE%" echo API_TIMEOUT_MS=3000000
 >> "%ENV_FILE%" echo DISABLE_TELEMETRY=1
 >> "%ENV_FILE%" echo CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
->> "%ENV_FILE%" echo ANTHROPIC_MODEL=qwen2.5-coder:7b-instruct-q4_K_M
->> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_SONNET_MODEL=qwen2.5-coder:7b-instruct-q4_K_M
->> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen2.5-coder:0.5b
+>> "%ENV_FILE%" echo ANTHROPIC_MODEL=gemma4:e4b
+>> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_SONNET_MODEL=gemma4:e4b
+>> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_HAIKU_MODEL=gemma4:e4b
 >> "%ENV_FILE%" echo ANTHROPIC_DEFAULT_OPUS_MODEL=gemma4:e4b
 
 :: ── Write .mcp.json ───────────────────────────────────────────────────────────
@@ -63,8 +63,7 @@ echo [skinny] Restarting ollama with Vulkan GPU...
 taskkill /IM ollama.exe /F >nul 2>&1
 timeout /t 3 /nobreak >nul
 
-:: ollama-vulkan.cmd imposta le variabili nel suo cmd.exe → le eredita ollama serve
-set "OLLAMA_MODEL=qwen2.5-coder:7b-instruct-q4_K_M"
+:: ollama-vulkan.cmd imposta le variabili Vulkan nel suo cmd.exe - le eredita ollama serve
 start "skinny-ollama" /min "%ARCH_DIR%\ollama-vulkan.cmd"
 
 :wait_ollama
@@ -74,7 +73,7 @@ timeout /t 1 /nobreak >nul
 goto wait_ollama
 
 :ollama_ready
-echo [skinny] Ollama ready (Vulkan GPU).
+echo [skinny] Ollama ready - Vulkan GPU active.
 
 :: ── Start proxy ───────────────────────────────────────────────────────────────
 echo [skinny] Starting proxy...
