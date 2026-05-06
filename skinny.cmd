@@ -63,9 +63,9 @@ echo [skinny] Restarting ollama with Vulkan GPU...
 taskkill /IM ollama.exe /F >nul 2>&1
 timeout /t 3 /nobreak >nul
 
-:: Vulkan DEVE essere passato via bash — PowerShell non eredita le env var al processo figlio
+:: ollama-vulkan.cmd imposta le variabili nel suo cmd.exe → le eredita ollama serve
 set "OLLAMA_MODEL=qwen2.5-coder:7b-instruct-q4_K_M"
-bash -c "OLLAMA_VULKAN=1 OLLAMA_MAX_LOADED_MODELS=1 OLLAMA_NUM_PARALLEL=1 OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve > '%ARCH_DIR%/ollama-vulkan.log' 2>&1 &"
+start "skinny-ollama" /min "%ARCH_DIR%\ollama-vulkan.cmd"
 
 :wait_ollama
 curl -s http://localhost:11434/api/version >nul 2>&1
